@@ -223,7 +223,7 @@
     }
     .topbar-left  { flex: 1; min-width: 0; }
     .topbar-label { display: none; }
-    .topbar-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -.5px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -.5px; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
     .topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
     .add-btn {
@@ -1040,7 +1040,7 @@
     <div class="splash-topbar">
       <div class="sk sk-circle" id="splashAvatar" style="width:40px;height:40px;flex-shrink:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;"></div>
       <div style="flex:1;padding:0 12px;">
-        <div class="topbar-title" id="splashTitle">Fee<br>Tracker</div>
+        <div class="topbar-title" id="splashTitle">Fee Tracker</div>
       </div>
       <div class="sk" style="width:40px;height:40px;border-radius:13px;flex-shrink:0;"></div>
     </div>
@@ -1687,12 +1687,11 @@
       if(_confirmResolve){ _confirmResolve(v); _confirmResolve=null; }
     }
     // Wire up confirm buttons once — they call _confirmDone
-    document.addEventListener('DOMContentLoaded', ()=>{
-      document.getElementById('confirmOkBtn').addEventListener('click', ()=>_confirmDone(true));
-      document.getElementById('confirmCancelBtn').addEventListener('click', ()=>_confirmDone(false));
-      document.getElementById('confirmOverlay').addEventListener('click', e=>{
-        if(e.target===document.getElementById('confirmOverlay')) _confirmDone(false);
-      });
+    // (inline script: DOM is already parsed, wire directly)
+    document.getElementById('confirmOkBtn').addEventListener('click', ()=>_confirmDone(true));
+    document.getElementById('confirmCancelBtn').addEventListener('click', ()=>_confirmDone(false));
+    document.getElementById('confirmOverlay').addEventListener('click', e=>{
+      if(e.target===document.getElementById('confirmOverlay')) _confirmDone(false);
     });
     function confirm2(title,msg,ok='Confirm',icon='⚠️'){
       return new Promise(res=>{
@@ -1938,9 +1937,9 @@
     // Track whether real content has ever been rendered — prevents skeleton flash on re-loads
     let appRendered = false;
 
-    async function loadAll(){
+    async function loadAll(silent=false){
       // Only show skeleton on very first ever load — never after that
-      if (!appRendered) {
+      if (!appRendered && !silent) {
         const hasCache = isT() ? Object.keys(batches).length > 0 : Object.keys(teachers).length > 0;
         if (!hasCache) {
           showAppSkeleton(); // only shown if no data at all yet
@@ -2104,7 +2103,7 @@
       if(dy>72){
         pi.textContent='\u27f3 Refreshing\u2026';
         pi.style.transform='translateY(0)';
-        await loadAll();
+        await loadAll(true);
         toast('Refreshed \u2713','success');
         setTimeout(()=>{pi.style.transform='translateY(-100%)';},700);
       }
@@ -2877,7 +2876,7 @@
         }
         hideSplash();
         document.getElementById('appScreen').classList.remove('hidden');
-        await loadAll(); // Firestore sync — silent, no skeleton shown
+        await loadAll(true); // Firestore sync — silent, no skeleton shown
       }
     }
 
