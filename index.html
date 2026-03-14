@@ -1587,6 +1587,11 @@
 
     // REFS
     const uid    = () => cu.uid;
+    // Separate stable UID for cache keys — persists even before cu is set
+    // Stored to localStorage on first auth so offline reads work correctly
+    function getCacheUid(){
+      return (cu && cu.uid) || localStorage.getItem('ft_uid') || 'anon';
+    }
     const tcCol  = () => collection(db,'users',uid(),'teachers');
     const btCol  = () => collection(db,'users',uid(),'batches');
     const pyCol  = () => collection(db,'users',uid(),'payments');
@@ -1609,7 +1614,7 @@
       req.onerror   = e => reject(e.target.error);
     });
 
-    function idbKey(k){ return `${uid()}__${k}`; }
+    function idbKey(k){ return `${getCacheUid()}__${k}`; }
 
     async function idbGet(k){
       try {
@@ -1637,7 +1642,7 @@
 
     // Sync reads for boot (fallback to localStorage for first-run migration)
     const LS = {
-      get: (k) => { try { const v=localStorage.getItem(`ft__${uid()}__${k}`); return v?JSON.parse(v):null; } catch{ return null; } },
+      get: (k) => { try { const v=localStorage.getItem(`ft__${getCacheUid()}__${k}`); return v?JSON.parse(v):null; } catch{ return null; } },
     };
 
     function loadFromCache(){
@@ -1666,13 +1671,13 @@
       idbSet('payments', payments);
       idbSet('batches',  batches);
       // Also keep LS in sync for migration compatibility
-      try { localStorage.setItem(`ft__${uid()}__teachers`, JSON.stringify(teachers)); } catch(e){}
-      try { localStorage.setItem(`ft__${uid()}__payments`, JSON.stringify(payments)); } catch(e){}
-      try { localStorage.setItem(`ft__${uid()}__batches`,  JSON.stringify(batches));  } catch(e){}
+      try { localStorage.setItem(`ft__${getCacheUid()}__teachers`, JSON.stringify(teachers)); } catch(e){}
+      try { localStorage.setItem(`ft__${getCacheUid()}__payments`, JSON.stringify(payments)); } catch(e){}
+      try { localStorage.setItem(`ft__${getCacheUid()}__batches`,  JSON.stringify(batches));  } catch(e){}
     }
     function saveProfileToCache(p){
       idbSet('profile', p);
-      try { localStorage.setItem(`ft__${uid()}__profile`, JSON.stringify(p)); } catch(e){}
+      try { localStorage.setItem(`ft__${getCacheUid()}__profile`, JSON.stringify(p)); } catch(e){}
     }
     function showOfflineBanner(show){
       let b=document.getElementById('offlineBanner');
@@ -2967,6 +2972,8 @@
     async function bootApp(user) {
       if (loaded) return;
       loaded = true; cu = user;
+      // Persist UID so cache keys are correct on offline reloads
+      try { localStorage.setItem('ft_uid', user.uid); } catch(e){}
       // Update topbar avatar + menu
       const av = document.getElementById('avatarEl');
       const ma = document.getElementById('menuAvatar');
@@ -3053,6 +3060,7 @@
         if (!loaded) await bootApp(user);
       } else {
         cu=null; loaded=false; profile={}; appRendered=false; teachers={}; payments=[]; batches={};
+        try { localStorage.removeItem('ft_uid'); } catch(e){}
         hideSplash();
         document.getElementById('onboardScreen').classList.add('hidden');
         document.getElementById('appScreen').classList.add('hidden');
