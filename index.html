@@ -479,6 +479,43 @@
     }
     .select-wrap select.field-input { padding-top: 14px; padding-bottom: 8px; height: 52px; font-size: 13px; font-weight: 600; }
     /* ── Theme toggle row ── */
+    /* Menu theme toggle switch */
+    .menu-theme-switch {
+      width: 44px; height: 24px; border-radius: 12px;
+      background: var(--accent);
+      position: relative; flex-shrink: 0; pointer-events: none;
+      transition: background .3s ease;
+    }
+    .menu-theme-knob {
+      position: absolute; top: 3px; left: 22px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #fff;
+      transition: left .28s cubic-bezier(.34,1.5,.64,1), transform .28s cubic-bezier(.34,1.5,.64,1);
+      box-shadow: 0 2px 6px rgba(0,0,0,.35);
+    }
+    /* light state — knob left + teal bg */
+    .menu-theme-switch.light-mode { background: var(--accent3); }
+    .menu-theme-switch.light-mode .menu-theme-knob { left: 3px; }
+
+    /* Icon animation class */
+    .menu-theme-icon-anim {
+      display: inline-block;
+      animation: themeIconPop .35s cubic-bezier(.34,1.5,.64,1);
+    }
+    @keyframes themeIconPop {
+      0%   { transform: scale(0.4) rotate(-30deg); opacity: 0; }
+      60%  { transform: scale(1.25) rotate(8deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    /* Label slide */
+    .menu-theme-label-anim {
+      animation: labelSlide .22s ease;
+    }
+    @keyframes labelSlide {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
     .theme-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--r-lg); margin-bottom: 16px; cursor: pointer; transition: background .15s; user-select: none; }
     .theme-toggle-row:active { background: var(--surface3); }
     .theme-toggle-left  { display: flex; align-items: center; gap: 12px; }
@@ -1320,23 +1357,10 @@
         <span class="menu-item-label" id="menuNotifLabel">Enable Reminders</span>
         <span class="menu-item-arrow" id="menuNotifArrow">›</span>
       </div>
-      <div class="menu-item" id="menuThemeBtn" onclick="toggleTheme(); updateMenuThemeLabel();">
+      <div class="menu-item" id="menuThemeBtn" onclick="toggleTheme(); updateMenuThemeLabel(true);">
         <span class="menu-item-icon" id="menuThemeIcon">🌙</span>
         <span class="menu-item-label" id="menuThemeLabel">Dark Mode</span>
-        <div id="menuThemeSwitch" style="
-          width:38px;height:22px;border-radius:11px;
-          background:var(--accent);
-          position:relative;flex-shrink:0;
-          transition:background .25s;pointer-events:none;
-        ">
-          <div id="menuThemeKnob" style="
-            position:absolute;top:3px;left:19px;
-            width:16px;height:16px;border-radius:50%;
-            background:#fff;
-            transition:left .22s cubic-bezier(.34,1.4,.64,1);
-            box-shadow:0 1px 4px rgba(0,0,0,.35);
-          "></div>
-        </div>
+        <div id="menuThemeSwitch" class="menu-theme-switch"><div id="menuThemeKnob" class="menu-theme-knob"></div></div>
       </div>
       <div class="menu-item menu-item-install hidden" id="menuInstallBtn">
         <span class="menu-item-icon">📲</span>
@@ -1471,7 +1495,6 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <div class="modal-title" id="addModalTitle">Add Teacher</div>
-        <button class="modal-close" id="cancelAddXBtn">✕</button>
       </div>
 
       <!-- Student: add teacher -->
@@ -3271,7 +3294,6 @@
     document.getElementById('signOutBtn').addEventListener('click',async()=>{ closeMenu(); await signOut(auth); });
     document.getElementById('editProfileBtn').addEventListener('click',()=>openProfileModal());
     document.getElementById('addBtn').addEventListener('click',openAddModal);
-    document.getElementById('cancelAddXBtn').addEventListener('click',closeAddModal);
     document.getElementById('cancelAddBtn').addEventListener('click',closeAddModal);
     document.getElementById('confirmAddBtn').addEventListener('click',confirmAdd);
     document.getElementById('addModal').addEventListener('click',e=>{ if(e.target===document.getElementById('addModal')) closeAddModal(); });
@@ -3433,22 +3455,38 @@
       }
     });
 
-    function updateMenuThemeLabel() {
+    function updateMenuThemeLabel(animate = false) {
       const isDark = !document.documentElement.classList.contains('light');
-      const icon  = document.getElementById('menuThemeIcon');
-      const label = document.getElementById('menuThemeLabel');
-      const knob  = document.getElementById('menuThemeKnob');
-      const sw    = document.getElementById('menuThemeSwitch');
-      if (icon)  icon.textContent   = isDark ? '🌙' : '☀️';
-      if (label) label.textContent  = isDark ? 'Dark Mode' : 'Light Mode';
-      if (knob)  knob.style.left    = isDark ? '19px' : '3px';
-      if (sw)    sw.style.background = isDark ? 'var(--accent)' : 'var(--accent3)';
+      const icon   = document.getElementById('menuThemeIcon');
+      const label  = document.getElementById('menuThemeLabel');
+      const sw     = document.getElementById('menuThemeSwitch');
+      if (!icon) return;
+
+      // Update switch CSS class (drives knob position + bg via CSS)
+      if (sw) sw.classList.toggle('light-mode', !isDark);
+
+      // Animate icon + label if this is a real toggle (not just a sync)
+      if (animate) {
+        // Icon: pop animation
+        icon.classList.remove('menu-theme-icon-anim');
+        void icon.offsetWidth; // force reflow to restart animation
+        icon.textContent = isDark ? '🌙' : '☀️';
+        icon.classList.add('menu-theme-icon-anim');
+        // Label: slide up animation
+        label.classList.remove('menu-theme-label-anim');
+        void label.offsetWidth;
+        label.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+        label.classList.add('menu-theme-label-anim');
+      } else {
+        icon.textContent  = isDark ? '🌙' : '☀️';
+        label.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+      }
     }
     // Keep in sync with the main _refreshThemeUI
     const _origRefreshUI = window._refreshThemeUI;
     window._refreshThemeUI = function() {
       if (typeof _origRefreshUI === 'function') _origRefreshUI();
-      updateMenuThemeLabel();
+      updateMenuThemeLabel(false);
     };
 
     function updateNotifMenuLabel() {
