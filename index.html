@@ -1779,19 +1779,15 @@
           deviceId,
           // Human-readable device hint
           deviceHint: (() => {
-            const ua = navigator.userAgent;
-            if (/iPhone/.test(ua))  return 'iPhone';
-            if (/iPad/.test(ua))    return 'iPad';
-            if (/Android/.test(ua)) return 'Android';
-            if (/Windows/.test(ua)) return 'Windows PC';
-            if (/Mac/.test(ua))     return 'Mac';
-            return 'Unknown device';
-          })(),
-          updatedAt: Date.now(),
-        }, { merge: true });
-        console.log('[FCM] Token saved for device:', deviceId);
-      } catch(e) { console.warn('[FCM] Token save failed:', e); }
-    }
+  const ua = navigator.userAgent;
+  const androidModel = ua.match(/;\s*([^;)]+)\s+Build\//);
+  if (androidModel) return androidModel[1].trim();
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua))   return 'iPad';
+  if (/Windows/.test(ua)) return 'Windows PC';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  return 'Unknown device';
+})(),
 
     async function removeFCMToken() {
       if (!uid()) return;
