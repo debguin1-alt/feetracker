@@ -1577,32 +1577,7 @@
         </div>
         <div class="field-group">
           <label>Baseline — Last Paid</label>
-          <div class="select-row">
-            <div class="select-wrap">
-              <span class="select-label">Month</span>
-              <select class="field-input" id="f-month">
-                <option value="">Select</option>
-                <option value="1">January</option>
-                <option value="2">February</option>
-                <option value="3">March</option>
-                <option value="4">April</option>
-                <option value="5">May</option>
-                <option value="6">June</option>
-                <option value="7">July</option>
-                <option value="8">August</option>
-                <option value="9">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
-              </select>
-            </div>
-            <div class="select-wrap">
-              <span class="select-label">Year</span>
-              <select class="field-input" id="f-year">
-                <option value="">Select</option>
-              </select>
-            </div>
-          </div>
+          <input class="field-input" id="f-lastpaid" type="date">
           <div class="field-hint">When was this teacher last paid? This is the starting point for calculating dues.</div>
         </div>
       </div>
@@ -1689,9 +1664,9 @@
           <div class="field-hint">Dues will be calculated from this date onwards.</div>
         </div>
         <div style="display:flex;gap:8px;margin-top:8px;">
-          <button class="btn-cancel" id="addOneStudentBtn" style="flex:1;height:46px;border-radius:14px;font-weight:700;font-family:'Syne',sans-serif;">+ Queue</button>
+          <button class="btn-cancel" id="addOneStudentBtn" style="flex:1;height:46px;border-radius:14px;font-weight:700;font-family:'Syne',sans-serif;">+ Add</button>
         </div>
-        <div class="field-hint" style="margin-top:6px;">Queue multiple students, then tap Save All.</div>
+        <div class="field-hint" style="margin-top:6px;">Add multiple students, then tap Save All.</div>
       </div>
       <div class="student-list-preview" id="pendingStudentsList"></div>
       <div class="btn-row">
@@ -1969,12 +1944,18 @@
       return id;
     }
 
-    // Save FCM token keyed by deviceId so each device has its own record
+    // Save FCM token keyed by deviceId — WRITE ONCE: never overwrite an existing token
     async function saveFCMToken(token) {
       if (!uid() || !token) return;
       const deviceId = getDeviceId();
       try {
-        // Doc ID = deviceId so re-registration overwrites cleanly, never duplicates
+        // Check if a token already exists for this device — if so, skip write
+        const existing = await getDoc(doc(db, 'users', uid(), 'fcmTokens', deviceId));
+        if (existing.exists()) {
+          console.log('[FCM] Token already stored for this device — skipping write');
+          return;
+        }
+        // First time for this device — write it once
         await setDoc(doc(db, 'users', uid(), 'fcmTokens', deviceId), {
           token,
           deviceId,
@@ -2039,35 +2020,34 @@
             if (/Macintosh/.test(ua)) return 'Mac';
             return 'Unknown device';
           })(),
-          updatedAt: Date.now(),
-          lastRefreshed: Date.now(),
-        }, { merge: true });
+          createdAt: Date.now(),
+        });
         console.log('[FCM] Token saved for device:', deviceId);
       } catch(e) { console.warn('[FCM] Token save failed:', e); }
     }
 
-    // Refresh FCM token — called on each app boot (tokens can expire/rotate)
-    // Stores new token, updates Firestore, keeps lastRefreshed timestamp
+    // Ensure this device has an FCM token — creates one if missing, never updates existing
     async function refreshFCMTokenIfNeeded() {
       if (!messaging || !uid() || Notification.permission !== 'granted') return;
       try {
-        // Only refresh if it's been >7 days since last refresh
-        const lastRefresh = parseInt(localStorage.getItem('ft_token_refreshed') || '0');
-        const daysSince   = (Date.now() - lastRefresh) / 86400000;
-        if (daysSince < 7 && localStorage.getItem('ft_fcm_token')) return;
-
+        const deviceId = getDeviceId();
+        // Check Firestore first — if token exists, nothing to do
+        const existing = await getDoc(doc(db, 'users', uid(), 'fcmTokens', deviceId));
+        if (existing.exists()) {
+          // Token already stored — also cache locally if missing
+          if (!localStorage.getItem('ft_fcm_token')) {
+            localStorage.setItem('ft_fcm_token', existing.data().token);
+          }
+          return;
+        }
+        // No token stored yet — generate and save once
         const sw    = await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
         if (!token) return;
-
-        const old = localStorage.getItem('ft_fcm_token');
         localStorage.setItem('ft_fcm_token', token);
-        localStorage.setItem('ft_token_refreshed', String(Date.now()));
-
-        // Always write to Firestore — setDoc with merge so it's a no-op if unchanged
         await saveFCMToken(token);
-        if (old !== token) console.log('[FCM] Token rotated and updated');
-      } catch(e) { console.warn('[FCM] Token refresh failed:', e); }
+        console.log('[FCM] Token created for new device');
+      } catch(e) { console.warn('[FCM] Token init failed:', e); }
     }
 
     async function removeFCMToken() {
@@ -2109,14 +2089,17 @@
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') { updateNotifMenuLabel(); return; }
 
-        // Save token per device if FCM is available
+        // Save token per device if FCM is available — write-once
         if (messaging) {
           try {
             const sw    = await navigator.serviceWorker.ready;
             const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
             if (token) {
-              localStorage.setItem('ft_fcm_token', token);
-              await saveFCMToken(token);
+              // Only write to localStorage + Firestore if not already stored
+              if (!localStorage.getItem('ft_fcm_token')) {
+                localStorage.setItem('ft_fcm_token', token);
+              }
+              await saveFCMToken(token); // saveFCMToken is now write-once internally
             }
           } catch(e) { console.warn('[FCM] Token error (non-fatal):', e); }
         }
@@ -2451,34 +2434,20 @@
       document.getElementById('addStudentFields').classList.toggle('hidden',t);
       document.getElementById('addTeacherFields').classList.toggle('hidden',!t);
 
-      // Populate year dropdown with range: 5 years back → 1 year ahead
-      // Each option shows e.g. "2024" — current year pre-selected
-      const yrSel = document.getElementById('f-year');
-      if(yrSel){
-        yrSel.innerHTML = '<option value="">Year</option>';
-        const now = new Date().getFullYear();
-        const prevMoZero = new Date().getMonth(); // 0-indexed
-        // Default to current year, but previous month — so if Jan, default to last year
-        const defaultYr = prevMoZero === 0 ? now - 1 : now;
-        for(let y = now + 1; y >= now - 8; y--){
-          const opt = document.createElement('option');
-          opt.value = y;
-          opt.textContent = y;
-          if(y === defaultYr) opt.selected = true;
-          yrSel.appendChild(opt);
-        }
-      }
-      // Also default month to previous month (most common case)
-      const moSel = document.getElementById('f-month');
-      if(moSel && !moSel.value){
-        const prevMo = new Date().getMonth(); // 0-based, so this is previous month
-        moSel.value = prevMo === 0 ? 12 : prevMo;
+      // Default the last-paid date to first day of previous month
+      const dtInp = document.getElementById('f-lastpaid');
+      if(dtInp && !dtInp.value){
+        const now = new Date();
+        const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const yy = pm.getFullYear();
+        const mm = String(pm.getMonth()+1).padStart(2,'0');
+        dtInp.value = `${yy}-${mm}-01`;
       }
       document.getElementById('addModal').classList.remove('hidden');
     }
     function closeAddModal(){
       document.getElementById('addModal').classList.add('hidden');
-      ['f-name','f-subject','f-fee','f-month','f-year','b-name','b-subject','b-class','b-session','b-fee','b-timing']
+      ['f-name','f-subject','f-fee','f-lastpaid','b-name','b-subject','b-class','b-session','b-fee','b-timing']
         .forEach(i=>{ const e=document.getElementById(i); if(e) e.value=''; });
     }
     async function confirmAdd(){
@@ -2497,9 +2466,9 @@
         const nm=document.getElementById('f-name').value.trim();
         const sb=document.getElementById('f-subject').value.trim();
         const fe=parseInt(document.getElementById('f-fee').value);
-        const mo=parseInt(document.getElementById('f-month').value);
-        const yr=parseInt(document.getElementById('f-year').value);
-        if(!nm||!sb||!fe||!mo||!yr) return toast('Fill all fields','error');
+        const dv=document.getElementById('f-lastpaid').value;
+        if(!nm||!sb||!fe||!dv) return toast('Fill all fields','error');
+        const dp=dv.split('-'); const mo=parseInt(dp[1]); const yr=parseInt(dp[0]);
         const tref=await addDoc(tcCol(),{name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr});
         teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr}; saveToCache();
         closeAddModal(); toast(`${nm} added ✓`,'success');
@@ -3584,15 +3553,24 @@
     document.getElementById('menuNotifBtn')?.addEventListener('click', async () => {
       closeMenu();
       if (Notification.permission === 'granted') {
-        // Already on — toggle off by clearing token
-        await removeFCMToken();
-        localStorage.removeItem('ft_fcm_token');
-        localStorage.removeItem('ft_last_reminder');
-        localStorage.removeItem('ft_notif_dismissed');
-        toast('Reminders turned off', '');
-        updateNotifMenuLabel();
+        // Reminders are ON — fire an immediate reminder check
+        const dueTeachers = isT()
+          ? [] // teacher mode: no due reminder logic here
+          : Object.keys(teachers).filter(id => monthsDue(id) > 0);
+        if (isT()) {
+          toast('Reminders are active 🔔', 'success');
+        } else if (dueTeachers.length > 0) {
+          checkDueReminder(true); // force-send now
+          toast('Reminder sent! 📤', 'success');
+        } else {
+          toast('No pending dues — all clear ✓', 'success');
+        }
+      } else if (Notification.permission === 'denied') {
+        toast('Notifications blocked — enable in browser settings ⚙️', 'error');
       } else {
+        // default — request permission
         await initNotifications();
+        if (Notification.permission === 'granted') toast('Reminders enabled 🔔', 'success');
       }
     });
 
