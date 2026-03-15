@@ -155,16 +155,41 @@
     :root.light .field-input[type="date"]::-webkit-calendar-picker-indicator { filter: none; opacity: .6; }
 
 
-    /* ── DASHBOARD BUTTON ── */
+    /* ── COLORFUL ANALYTICS BUTTON ── */
     .dash-btn {
       width:40px; height:40px; border-radius:var(--r-lg);
-      background:var(--surface2); border:1px solid var(--border2);
-      color:var(--text2); cursor:pointer;
+      background:linear-gradient(135deg, rgba(124,107,255,.12), rgba(0,212,170,.08));
+      border:1px solid rgba(124,107,255,.25);
+      cursor:pointer;
       display:flex; align-items:center; justify-content:center;
-      transition:transform .15s, background .15s;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
+      transition:transform .15s, box-shadow .15s, background .2s;
+      box-shadow:0 2px 10px rgba(124,107,255,.18);
     }
-    .dash-btn:active { transform:scale(.88); background:var(--accent-dim); color:var(--accent); }
+    .dash-btn:active { transform:scale(.88); box-shadow:0 1px 4px rgba(124,107,255,.12); }
+
+    /* ── SMOOTH SELECTION — no flash ── */
+    .teacher-card, .batch-card, .student-card {
+      transition: border-color .2s ease, background .2s ease, transform .15s ease;
+      will-change: border-color, background;
+    }
+    .teacher-card.selected, .batch-card.selected, .student-card.selected {
+      border-color: rgba(124,107,255,.5) !important;
+      background: rgba(124,107,255,.06) !important;
+      transform: scale(1.005);
+    }
+    .sel-circle {
+      transition: border-color .2s cubic-bezier(.34,1.4,.64,1), transform .2s cubic-bezier(.34,1.4,.64,1);
+    }
+    .sel-circle.checked { transform: scale(1.08); }
+    .sel-check-row {
+      animation: ftSlideUp .18s ease both;
+    }
+
+    /* ── TOTAL CARD tap feedback ── */
+    .total-card { cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+    .total-card:active { transform: scale(.98); }
+    .teacher-mode-header { transition: background .15s ease, border-color .15s ease; }
+    .teacher-mode-header:active { background: linear-gradient(135deg, rgba(0,212,170,.12), rgba(124,107,255,.07)); }
 
     /* ── ANIMATIONS ── */
     @keyframes ftSlideUp    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
@@ -2872,7 +2897,7 @@
       const cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon">👤</span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="total-card">
+        <div class="total-card" onclick="openStudentDash()" style="cursor:pointer">
           <div class="total-label">Total Outstanding</div>
           <div class="total-amount"><span class="cur">₹</span>${td.toLocaleString('en-IN')}</div>
           <div class="total-sub">As of ${ds}</div>
@@ -2883,7 +2908,7 @@
           </div>
         </div>
         <div class="search-wrap">
-          <span class="search-icon">🔍</span>
+          <span class="search-icon" style="display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 8.5 L12.5 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
           <input class="search-input" type="text" placeholder="Search teacher or subject\u2026" value="${searchQ}" oninput="onSearch(this.value)"/>
           ${searchQ?`<span class="search-clear" onclick="onSearch('')">\u2715</span>`:''}
         </div>
@@ -4065,34 +4090,85 @@
       const bar=document.getElementById('selBar');
       bar.classList.remove('hidden','ctx-teacher','ctx-student','ctx-batch');
       bar.classList.add('ctx-'+ctx);
-      const cnt=document.getElementById('selCount');
-      if(cnt){ cnt.parentElement.className='sel-bar-count ctx-'+ctx; }
       updateSelBar();
-      // Always call the patched renders — they build checkboxes and respect selItems
-      if(ctx==='student') renderBatchDetail(currentBatchId);
-      else if(isT()) window._selRenderTeacher?.();
-      else window._selRenderStudent?.();
+      // Only rebuild the cards list — no full page re-render
+      if(ctx==='student') _selRebuildStudentList();
+      else if(isT()) _selRebuildBatchList();
+      else _selRebuildTeacherList();
     }
     function exitSelMode(){
       const prevCtx=selContext; selMode=false; selItems.clear(); selContext='';
-      const bar=document.getElementById('selBar');
-      bar.classList.add('hidden');
-      bar.classList.remove('ctx-teacher','ctx-student','ctx-batch');
-      // Re-render so pinned items appear at top and selection chrome is removed
-      if(prevCtx==='student') renderBatchDetail(currentBatchId);
-      else if(isT()) window._selRenderTeacher?.();
-      else window._selRenderStudent?.();
+      document.getElementById('selBar').classList.add('hidden');
+      // Only rebuild the list — keeps hero card / header in place
+      if(prevCtx==='student') _selRebuildStudentList();
+      else if(prevCtx==='batch') _selRebuildBatchList();
+      else _selRebuildTeacherList();
+      // Ensure pinned items re-sort (only list changes anyway)
       const _db=document.getElementById('dashBtn'); if(_db) _db.classList.remove('hidden');
     }
     function toggleSelItem(id){
       if(selItems.has(id)) selItems.delete(id); else selItems.add(id);
       if(!selItems.size){ exitSelMode(); return; }
       updateSelBar();
-      // Re-render the list so all checkboxes reflect current selItems correctly
-      // (DOM-only updates fail because original renders don't create .sel-circle elements)
-      if(selContext==='student') renderBatchDetail(currentBatchId);
-      else if(isT()) window._selRenderTeacher?.();
-      else window._selRenderStudent?.();
+      // DOM-only toggle — instant, no re-render at all
+      document.querySelectorAll(
+        `.teacher-card[data-id="${id}"],.batch-card[data-id="${id}"],.student-card[data-id="${id}"]`
+      ).forEach(el=>{
+        el.classList.toggle('selected', selItems.has(id));
+        const circ=el.querySelector('.sel-circle');
+        if(circ){ circ.classList.toggle('checked', selItems.has(id)); }
+      });
+    }
+
+    // Lightweight list-only rebuilds — never touch hero card / header
+    function _selRebuildTeacherList(){
+      const root=document.getElementById('appInner');
+      if(!root)return;
+      // Find or create the cards-list container for teacher cards
+      let container=root.querySelector('.cards-sel-wrap');
+      if(!container){
+        // Build checkboxes on existing batch-cards in place
+        document.querySelectorAll('.batch-card[data-id]').forEach(card=>{
+          const bid=card.dataset.id;
+          if(card.querySelector('.sel-circle'))return;
+          const isSel=selItems.has(bid);
+          const row=document.createElement('div');
+          row.className='sel-check-row'; row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 14px 0';
+          row.innerHTML=`<div class="sel-circle ${isSel?'checked':''}" onclick="event.stopPropagation();selTap('${bid}')"><span class="sel-tick">✓</span></div>`;
+          card.insertBefore(row,card.firstChild);
+          card.classList.toggle('selected',isSel);
+        });
+        return;
+      }
+    }
+    function _selRebuildBatchList(){
+      document.querySelectorAll('.batch-card[data-id]').forEach(card=>{
+        const bid=card.dataset.id; const isSel=selItems.has(bid);
+        if(!card.querySelector('.sel-circle')){
+          const b=batches[bid]||{};
+          const row=document.createElement('div');
+          row.className='sel-check-row'; row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 14px 0';
+          const pinHtml=b.pinned?'<span class="pin-badge">📌 Pinned</span>':'';
+          row.innerHTML=`<div class="sel-circle ${isSel?'checked':''}" onclick="event.stopPropagation();selTap('${bid}')"><span class="sel-tick">✓</span></div><div class="batch-name" style="font-size:13px">${b.name||''}</div>${pinHtml}`;
+          card.insertBefore(row,card.firstChild);
+        }
+        card.classList.toggle('selected',isSel);
+        // Wire card tap
+        card._origOnclick=card._origOnclick||card.getAttribute('onclick');
+        card.setAttribute('onclick',`if(selMode){event.stopPropagation();selTap('${bid}');return;}openBatchDetail('${bid}')`);
+      });
+    }
+    function _selRebuildStudentList(){
+      document.querySelectorAll('.student-card[data-id]').forEach(card=>{
+        const sid=card.dataset.id; const isSel=selItems.has(sid);
+        if(!card.querySelector('.sel-circle')){
+          const row=document.createElement('div');
+          row.className='sel-check-row'; row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 13px 0';
+          row.innerHTML=`<div class="sel-circle ${isSel?'checked':''}" onclick="event.stopPropagation();selTap('${sid}')"><span class="sel-tick">✓</span></div>`;
+          card.insertBefore(row,card.firstChild);
+        }
+        card.classList.toggle('selected',isSel);
+      });
     }
     function updateSelBar(){
       document.getElementById('selCount').textContent=selItems.size;
@@ -4205,10 +4281,10 @@
       const subjLine=[subjs.length?subjs.join(', '):'No subjects set',classes.length?classes.join(', '):'',sess].filter(Boolean).join(' · ');
       let h=`
         ${!profile.displayName?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon">👨‍🏫</span><div class="setup-banner-text"><div class="setup-banner-title">Set up your teacher profile</div><div class="setup-banner-sub">Add your subjects and session</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="teacher-mode-header"><div class="tmh-icon">👨‍🏫</div><div class="tmh-info"><div class="tmh-title">Teacher Dashboard</div><div class="tmh-sub">${subjLine}</div></div>
+        <div class="teacher-mode-header" onclick="openTeacherDash()" style="cursor:pointer"><div class="tmh-icon">👨‍🏫</div><div class="tmh-info"><div class="tmh-title">Teacher Dashboard <span style='font-size:10px;opacity:.6;font-weight:400'>Tap for analytics</span></div><div class="tmh-sub">${subjLine}</div></div>
           <button onclick="openAddStandaloneStudent()" style="background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;padding:6px 11px;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--accent);cursor:pointer;white-space:nowrap;flex-shrink:0;">+ Student</button>
         </div>
-        <div class="search-wrap"><span class="search-icon">🔍</span><input class="search-input" type="text" placeholder="Search batch…" value="${searchQ}" oninput="onSearch(this.value)"/>${searchQ?`<span class="search-clear" onclick="onSearch('')">✕</span>`:''}</div>
+        <div class="search-wrap"><span class="search-icon" style="display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 8.5 L12.5 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><input class="search-input" type="text" placeholder="Search batch…" value="${searchQ}" oninput="onSearch(this.value)"/>${searchQ?`<span class="search-clear" onclick="onSearch('')">✕</span>`:''}</div>
         <div class="section-label"><span class="section-label-txt">My Batches</span><span class="section-label-count">${bList.length}</span></div>`;
       if(!bList.length){h+=`<div class="empty-state"><div class="empty-icon">👨‍🏫</div><div class="empty-title">No batches yet</div><div class="empty-sub">Tap <strong>+</strong> to add.</div></div>`;root.innerHTML=h;return;}
       const fil=bList.filter(id=>{const q=searchQ.toLowerCase();return !q||batches[id].name.toLowerCase().includes(q)||batches[id].subject?.toLowerCase().includes(q);}).sort((a,b)=>(batches[b].pinned?1:0)-(batches[a].pinned?1:0));
@@ -4230,7 +4306,7 @@
       const ov=Object.keys(teachers).filter(id=>monthsDue(id)>0).length,cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon">👤</span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="total-card">
+        <div class="total-card" onclick="openStudentDash()" style="cursor:pointer">
           <div class="total-label">Total Outstanding</div>
           <div class="total-amount"><span class="cur">₹</span>${td.toLocaleString('en-IN')}</div>
           <div class="total-sub">As of ${ds}</div>
@@ -4240,7 +4316,7 @@
             <div class="total-meta-item"><div class="total-meta-val">${Object.keys(teachers).length}</div><div class="total-meta-lbl">Teachers</div></div>
           </div>
         </div>
-        <div class="search-wrap"><span class="search-icon">🔍</span><input class="search-input" type="text" placeholder="Search teacher or subject…" value="${searchQ}" oninput="onSearch(this.value)"/>${searchQ?`<span class="search-clear" onclick="onSearch('')">✕</span>`:''}</div>
+        <div class="search-wrap"><span class="search-icon" style="display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 8.5 L12.5 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><input class="search-input" type="text" placeholder="Search teacher or subject…" value="${searchQ}" oninput="onSearch(this.value)"/>${searchQ?`<span class="search-clear" onclick="onSearch('')">✕</span>`:''}</div>
         <div class="section-label"><span class="section-label-txt">Teachers</span><span class="section-label-count" id="teachers-count">${Object.keys(teachers).length}</span></div>
         <div id="cards-list">`;
       if(!Object.keys(teachers).length){h+=`<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">No teachers yet</div><div class="empty-sub">Tap <strong>+</strong> to add your first teacher.</div></div></div>`;root.innerHTML=h;return;}
