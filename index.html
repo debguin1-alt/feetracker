@@ -2778,9 +2778,11 @@
     function toggleMenu(e){ e?.stopPropagation(); const m=document.getElementById('userMenu'),b=document.getElementById('menuBackdrop'),h=!m.classList.contains('hidden'); m.classList.toggle('hidden',h); b.classList.toggle('hidden',h); if(!h) updateMenuThemeLabel(); }
     function closeMenu(){ document.getElementById('userMenu').classList.add('hidden'); document.getElementById('menuBackdrop').classList.add('hidden'); }
 
-    // RENDER
+    // RENDER — always use the overridden window versions if present (they include selection + pin sort)
     function render(){
-      appRendered=true; isT()?renderTeacher():renderStudent();
+      appRendered=true;
+      if(isT()){ (typeof window._selRenderTeacher==='function'?window._selRenderTeacher:renderTeacher)(); }
+      else      { (typeof window._selRenderStudent==='function'?window._selRenderStudent:renderStudent)(); }
       const _db=document.getElementById('dashBtn'); if(_db) _db.classList.remove('hidden');
     }
 
@@ -4066,25 +4068,31 @@
       const cnt=document.getElementById('selCount');
       if(cnt){ cnt.parentElement.className='sel-bar-count ctx-'+ctx; }
       updateSelBar();
-      if(ctx==='student') renderBatchDetail(currentBatchId); else render();
+      // Always call the patched renders — they build checkboxes and respect selItems
+      if(ctx==='student') renderBatchDetail(currentBatchId);
+      else if(isT()) window._selRenderTeacher?.();
+      else window._selRenderStudent?.();
     }
     function exitSelMode(){
       const prevCtx=selContext; selMode=false; selItems.clear(); selContext='';
       const bar=document.getElementById('selBar');
       bar.classList.add('hidden');
       bar.classList.remove('ctx-teacher','ctx-student','ctx-batch');
-      if(prevCtx==='student') renderBatchDetail(currentBatchId); else render();
+      // Re-render so pinned items appear at top and selection chrome is removed
+      if(prevCtx==='student') renderBatchDetail(currentBatchId);
+      else if(isT()) window._selRenderTeacher?.();
+      else window._selRenderStudent?.();
+      const _db=document.getElementById('dashBtn'); if(_db) _db.classList.remove('hidden');
     }
     function toggleSelItem(id){
-      if(selItems.has(id))selItems.delete(id); else selItems.add(id);
-      if(!selItems.size){exitSelMode();return;}
+      if(selItems.has(id)) selItems.delete(id); else selItems.add(id);
+      if(!selItems.size){ exitSelMode(); return; }
       updateSelBar();
-      // update checkboxes visually without full re-render
-      document.querySelectorAll(`.teacher-card[data-id="${id}"],.batch-card[data-id="${id}"],.student-card[data-id="${id}"]`).forEach(el=>{
-        el.classList.toggle('selected',selItems.has(id));
-        const circ=el.querySelector('.sel-circle');
-        if(circ)circ.classList.toggle('checked',selItems.has(id));
-      });
+      // Re-render the list so all checkboxes reflect current selItems correctly
+      // (DOM-only updates fail because original renders don't create .sel-circle elements)
+      if(selContext==='student') renderBatchDetail(currentBatchId);
+      else if(isT()) window._selRenderTeacher?.();
+      else window._selRenderStudent?.();
     }
     function updateSelBar(){
       document.getElementById('selCount').textContent=selItems.size;
@@ -4136,6 +4144,7 @@
         else if(selContext==='teacher'){ teachers[id].pinned=newPinState; await updateDoc(tcDoc(id),{pinned:newPinState}); }
         else{ batches[id].pinned=newPinState; await updateDoc(btDoc(id),{pinned:newPinState}); }
       }catch(e){ toast('Error: '+e.message,'error'); return; }
+      saveToCache(); // persist pin state to IDB
       toast(newPinState?'Pinned to top 📌':'Unpinned', newPinState?'success':'');
       exitSelMode();
     });
@@ -4409,6 +4418,10 @@
       const bCtx=document.getElementById('stuBarChart')?.getContext('2d');if(bCtx){const cd=chartOpts();_sdc.push(new Chart(bCtx,{type:'bar',data:{labels:td2.map(t=>t.name.length>14?t.name.slice(0,14)+'…':t.name),datasets:[{label:'Months Due',data:td2.map(t=>t.dm),backgroundColor:td2.map(t=>t.cr?'rgba(255,77,109,.8)':t.ov?'rgba(255,209,102,.8)':'rgba(0,212,170,.8)'),borderRadius:5,borderSkipped:false}]},options:{...cd,indexAxis:'y',plugins:{...cd.plugins,legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10},stepSize:1},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10}},grid:{display:false}}}}}));}
       const lCtx=document.getElementById('stuLineChart')?.getContext('2d');if(lCtx){const cd=chartOpts();_sdc.push(new Chart(lCtx,{type:'line',data:{labels:ml2,datasets:[{label:'Paid (₹)',data:ma2,borderColor:'#ff6b9d',backgroundColor:'rgba(255,107,157,.1)',tension:.4,fill:true,pointBackgroundColor:'#ff6b9d',pointRadius:4,borderWidth:2}]},options:{...cd,plugins:{...cd.plugins,legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10},callback:v=>v>=1000?'₹'+(v/1000).toFixed(0)+'k':'₹'+v},grid:{color:gc}}}}}));}
     };
+
+    // Register patched renders so render() and selection functions can always call the right version
+    window._selRenderTeacher = window.renderTeacher;
+    window._selRenderStudent = window.renderStudent;
 
     // Wire dashboard button
     document.getElementById('dashBtn')?.addEventListener('click',()=>{if(isT())openTeacherDash();else openStudentDash();});
