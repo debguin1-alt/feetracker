@@ -3051,7 +3051,54 @@
       animation: none !important;
     }
 
-    /* ── Fix 9: Suppress card re-entry animation during search ── */
+    /* ══════════════════════════════════════════════════════════
+       INTERACTIVE TOTAL CARD — meta item hover/active/filter
+    ══════════════════════════════════════════════════════════ */
+
+    /* Smooth meta item tap feedback */
+    .total-meta-item {
+      transition: transform .18s cubic-bezier(.34,1.5,.64,1),
+                  opacity .14s ease,
+                  background .15s ease,
+                  outline .12s ease !important;
+      border-radius: 12px !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .total-meta-item:active {
+      transform: scale(.92) !important;
+      opacity: .85 !important;
+    }
+    /* Hover glow on desktop */
+    @media (hover: hover) {
+      .total-meta-item:hover {
+        background: rgba(255,255,255,.22) !important;
+        transform: scale(1.04) !important;
+      }
+    }
+
+    /* Count-up in-progress dimming */
+    #totalAmtDisplay.counting {
+      opacity: .82;
+    }
+
+    /* Subtle pulse on the total card when filter is active */
+    #totalCard.filter-active {
+      box-shadow:
+        0 24px 64px rgba(74,53,224,.45),
+        0 8px 28px rgba(192,48,160,.32),
+        inset 0 1px 0 rgba(255,255,255,.18),
+        inset 0 -1px 0 rgba(0,0,0,.12) !important;
+    }
+
+    /* Meta value flash-scale animation */
+    @keyframes metaFlash {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.28); }
+      100% { transform: scale(1); }
+    }
+    .meta-val-flash { animation: metaFlash .28s cubic-bezier(.34,1.5,.64,1) both; }
+
+    /* Fix 9: Suppress card re-entry animation during search */
     .search-active .teacher-card,
     .search-active .batch-card,
     .search-active .student-card {
@@ -4516,6 +4563,7 @@
         const newPay={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,amount:amt,type:'full',paidOn:po,timestamp:Date.now()};
         const fref=await addDoc(pyCol(),newPay); newPay.id=fref.id; payments.push(newPay); saveToCache();
         toast(`Paid ₹${amt.toLocaleString('en-IN')} ✓`,'success');
+        setTimeout(updateTotalCard, 100);
       } else if(type==='partial'){
         const amt=parseInt(document.getElementById('pay-partial-'+id).value);
         if(!amt||amt<1) return toast('Enter an amount','error');
@@ -4527,6 +4575,7 @@
         const newPay2={teacherId:id,teacherName:t.name,subject:t.subject,amount:amt,type:'partial',paidOn:po,timestamp:Date.now()};
         const fref2=await addDoc(pyCol(),newPay2); newPay2.id=fref2.id; payments.push(newPay2); saveToCache();
         toast(`Partial ₹${amt.toLocaleString('en-IN')} recorded`,'success');
+        setTimeout(updateTotalCard, 100);
       } else if(type==='advance'){
         if(monthsDue(id)>0) return toast('Clear dues first','error');
         const v=parseInt(document.getElementById('pay-advance-'+id).value);
@@ -4536,6 +4585,7 @@
         const newPay3={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,advanceMonths:v,amount:amt,type:'advance',paidOn:po,timestamp:Date.now()};
         const fref3=await addDoc(pyCol(),newPay3); newPay3.id=fref3.id; payments.push(newPay3); saveToCache();
         toast(`Advance ₹${amt.toLocaleString('en-IN')} paid ✓`,'success');
+        setTimeout(updateTotalCard, 100);
       }
       render();
     };
@@ -4817,14 +4867,23 @@
       const cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><circle cx="8" cy="5.5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="total-card"  style="cursor:pointer">
+        <div class="total-card" id="totalCard" style="cursor:pointer" onclick="handleTotalCardClick(event)">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">₹0</span></div>
-          <div class="total-sub">As of ${ds}</div>
-          <div class="total-meta">
-            <div class="total-meta-item"><div class="total-meta-val">${ov}</div><div class="total-meta-lbl">Pending</div></div>
-            <div class="total-meta-item"><div class="total-meta-val">${cl}</div><div class="total-meta-lbl">Clear</div></div>
-            <div class="total-meta-item"><div class="total-meta-val">${Object.keys(teachers).length}</div><div class="total-meta-lbl">Teachers</div></div>
+          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
+          <div class="total-sub" id="totalDateSub">As of ${ds}</div>
+          <div class="total-meta" id="totalMeta">
+            <div class="total-meta-item total-meta-item--pending" id="metaPending" onclick="event.stopPropagation();filterByStatus('pending')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show pending teachers">
+              <div class="total-meta-val" id="metaPendingVal">${ov}</div>
+              <div class="total-meta-lbl">Pending</div>
+            </div>
+            <div class="total-meta-item total-meta-item--clear" id="metaClear" onclick="event.stopPropagation();filterByStatus('clear')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show clear teachers">
+              <div class="total-meta-val" id="metaClearVal">${cl}</div>
+              <div class="total-meta-lbl">Clear</div>
+            </div>
+            <div class="total-meta-item total-meta-item--all" id="metaAll" onclick="event.stopPropagation();filterByStatus('all')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show all teachers">
+              <div class="total-meta-val" id="metaAllVal">${Object.keys(teachers).length}</div>
+              <div class="total-meta-lbl">Teachers</div>
+            </div>
           </div>
         </div>
         <div class="search-wrap">
@@ -6365,14 +6424,23 @@
       const cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><circle cx="8" cy="5.5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="total-card"  style="cursor:pointer">
+        <div class="total-card" id="totalCard" style="cursor:pointer" onclick="handleTotalCardClick(event)">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">₹0</span></div>
-          <div class="total-sub">As of ${ds}</div>
-          <div class="total-meta">
-            <div class="total-meta-item"><div class="total-meta-val">${ov}</div><div class="total-meta-lbl">Pending</div></div>
-            <div class="total-meta-item"><div class="total-meta-val">${cl}</div><div class="total-meta-lbl">Clear</div></div>
-            <div class="total-meta-item"><div class="total-meta-val">${Object.keys(teachers).length}</div><div class="total-meta-lbl">Teachers</div></div>
+          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
+          <div class="total-sub" id="totalDateSub">As of ${ds}</div>
+          <div class="total-meta" id="totalMeta">
+            <div class="total-meta-item total-meta-item--pending" id="metaPending" onclick="event.stopPropagation();filterByStatus('pending')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show pending teachers">
+              <div class="total-meta-val" id="metaPendingVal">${ov}</div>
+              <div class="total-meta-lbl">Pending</div>
+            </div>
+            <div class="total-meta-item total-meta-item--clear" id="metaClear" onclick="event.stopPropagation();filterByStatus('clear')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show clear teachers">
+              <div class="total-meta-val" id="metaClearVal">${cl}</div>
+              <div class="total-meta-lbl">Clear</div>
+            </div>
+            <div class="total-meta-item total-meta-item--all" id="metaAll" onclick="event.stopPropagation();filterByStatus('all')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show all teachers">
+              <div class="total-meta-val" id="metaAllVal">${Object.keys(teachers).length}</div>
+              <div class="total-meta-lbl">Teachers</div>
+            </div>
           </div>
         </div>
         <div class="search-wrap">
@@ -6917,14 +6985,17 @@
 
 
     // ── Total Amount Count-Up Animation ─────────────────────────────────
+    let _countUpRaf = null;
     function runTotalCountUp(){
-      if(isT()) return; // teacher role shows batch-based totals differently
+      if(isT()) return;
       const el = document.getElementById('totalAmtDisplay');
       if(!el) return;
-      const target = totalDue(); // get real value first
-      if(target === 0){ el.textContent = '0'; return; }
+      if(_countUpRaf){ cancelAnimationFrame(_countUpRaf); _countUpRaf=null; }
+      const target = totalDue();
+      el.classList.add('counting');
+      if(target === 0){ el.textContent = '0'; el.classList.remove('counting'); return; }
+      el.textContent = '0';
       const digits = String(target).length;
-      el.textContent = '0'.repeat(digits); // start with same-length zeros
       const duration = Math.min(1200, 600 + digits * 80);
       const startTime = performance.now();
       const easeOut = t => 1 - Math.pow(1 - t, 3);
@@ -6932,11 +7003,136 @@
         const progress = Math.min((now - startTime) / duration, 1);
         const current = Math.round(easeOut(progress) * target);
         el.textContent = current.toLocaleString('en-IN');
-        if(progress < 1) requestAnimationFrame(tick);
-        else el.textContent = target.toLocaleString('en-IN');
+        if(progress < 1){ _countUpRaf = requestAnimationFrame(tick); }
+        else { el.textContent = target.toLocaleString('en-IN'); el.classList.remove('counting'); _countUpRaf=null; }
       }
-      requestAnimationFrame(tick);
+      _countUpRaf = requestAnimationFrame(tick);
     }
+
+    // ── updateTotalCard — reactive patch without full re-render ──────────
+    window._activeStatusFilter = 'all';
+    function _applyMetaHighlight(filter){
+      const items = {
+        pending: document.getElementById('metaPending'),
+        clear:   document.getElementById('metaClear'),
+        all:     document.getElementById('metaAll')
+      };
+      Object.entries(items).forEach(([k, el])=>{
+        if(!el) return;
+        const active = (k === filter);
+        el.style.transform  = active ? 'scale(1.06)' : 'scale(1)';
+        el.style.opacity    = active ? '1' : '0.72';
+        el.style.background = active ? 'rgba(255,255,255,0.28)' : '';
+        el.style.outline    = active ? '2px solid rgba(255,255,255,0.45)' : '';
+        el.style.outlineOffset = '2px';
+      });
+    }
+
+    function updateTotalCard(){
+      if(isT()) return;
+      const ov = Object.keys(teachers).filter(id=>monthsDue(id)>0).length;
+      const cl = Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
+      const total = Object.keys(teachers).length;
+      const n = new Date();
+      const ds = n.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+      const dateSub = document.getElementById('totalDateSub');
+      if(dateSub) dateSub.textContent = 'As of ' + ds;
+      function flashUpdate(id, val){
+        const el = document.getElementById(id);
+        if(!el || el.textContent == String(val)) return;
+        el.style.transition = 'transform .18s cubic-bezier(.34,1.5,.64,1),opacity .14s';
+        el.style.transform = 'scale(1.22)'; el.style.opacity = '0.7';
+        setTimeout(()=>{ el.textContent = val; el.style.transform='scale(1)'; el.style.opacity='1'; },90);
+      }
+      flashUpdate('metaPendingVal', ov);
+      flashUpdate('metaClearVal',   cl);
+      flashUpdate('metaAllVal',     total);
+      runTotalCountUp();
+      _applyMetaHighlight(window._activeStatusFilter || 'all');
+    }
+
+    // ── Dashboard card filter logic ─────────────────────────────────────
+    // filterByStatus: filters the teacher cards list by pending / clear / all
+    window.filterByStatus = function(status){
+      window._activeStatusFilter = status;
+      _applyMetaHighlight(status);
+
+      // Update section label
+      const lbl = document.querySelector('.section-label-txt');
+      if(lbl){
+        lbl.textContent = status==='pending' ? 'Pending' : status==='clear' ? 'Clear' : 'Teachers';
+      }
+
+      // Filter cards-list
+      const container = document.getElementById('cards-list');
+      if(!container) return;
+
+      const allCards = container.querySelectorAll('.teacher-card[data-id]');
+      let shownCount = 0;
+      allCards.forEach(card=>{
+        const id = card.dataset.id;
+        if(!id) return;
+        let show = true;
+        if(status==='pending') show = monthsDue(id) > 0;
+        else if(status==='clear') show = monthsDue(id) === 0;
+        card.style.display = show ? '' : 'none';
+        if(show) shownCount++;
+      });
+
+      // Show empty state if nothing matches
+      let noRes = container.querySelector('.filter-empty');
+      if(shownCount === 0 && status !== 'all'){
+        if(!noRes){
+          noRes = document.createElement('div');
+          noRes.className = 'no-results filter-empty';
+        }
+        noRes.textContent = status==='pending' ? 'No pending fees 🎉' : 'No cleared teachers yet';
+        container.appendChild(noRes);
+      } else if(noRes){
+        noRes.remove();
+      }
+
+      // Update count badge
+      const countEl = document.getElementById('teachers-count');
+      if(countEl) countEl.textContent = shownCount > 0 || status==='all'
+        ? Object.keys(teachers).length : shownCount;
+
+      // Haptic feedback on mobile (best-effort)
+      try{ if(navigator.vibrate) navigator.vibrate(10); } catch(e){}
+
+      // Toast hint
+      if(status==='pending' && shownCount > 0)
+        toast(`${shownCount} pending fee${shownCount>1?'s':''}`, '');
+      else if(status==='clear' && shownCount > 0)
+        toast(`${shownCount} all-clear ✓`, 'success');
+      else if(status==='all')
+        toast('Showing all teachers', '');
+    };
+
+    // handleTotalCardClick — tap the card body to clear filter / open dash
+    window.handleTotalCardClick = function(e){
+      // If a meta item was tapped, its own onclick handles it
+      if(e.target.closest('.total-meta-item')) return;
+      // Otherwise: if a filter is active, clear it; else open analytics
+      if(window._activeStatusFilter && window._activeStatusFilter !== 'all'){
+        filterByStatus('all');
+      } else {
+        if(typeof window.openStudentDash === 'function') window.openStudentDash();
+      }
+    };
+
+    // Patch render() to call updateTotalCard reactively after every render
+    const _origRenderStudent = renderStudent;
+    function renderStudent(){
+      _origRenderStudent.apply(this, arguments);
+      // Reset active filter on full re-render, then re-apply highlight
+      window._activeStatusFilter = window._activeStatusFilter || 'all';
+      setTimeout(()=>{
+        runTotalCountUp();
+        _applyMetaHighlight(window._activeStatusFilter);
+      }, 60);
+    }
+    window._patchedRenderStudent = renderStudent;
 
     // Sync notif on load
     _syncNotifToggle();
