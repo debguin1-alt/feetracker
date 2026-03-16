@@ -2855,6 +2855,154 @@
       z-index: 2 !important;
     }
 
+    /* ╔══════════════════════════════════════════════════╗
+       ║        SMOOTH INPUT SYSTEM                      ║
+       ╚══════════════════════════════════════════════════╝ */
+
+    /* Base field — smooth transitions */
+    .field-input {
+      transition:
+        border-color .22s ease,
+        background .22s ease,
+        box-shadow .22s ease,
+        transform .12s ease !important;
+    }
+
+    /* Focus — lift + accent ring */
+    .field-input:focus {
+      border-color: rgba(124,107,255,.5) !important;
+      background: var(--surface) !important;
+      box-shadow:
+        0 0 0 4px rgba(124,107,255,.1),
+        0 2px 12px rgba(124,107,255,.08) !important;
+      outline: none !important;
+    }
+
+    /* Number inputs — no spinners */
+    .field-input[type="number"]::-webkit-inner-spin-button,
+    .field-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+    .field-input[type="number"] { -moz-appearance: textfield; }
+
+    /* Date input polish */
+    .field-input[type="date"] {
+      cursor: pointer !important;
+      color-scheme: dark !important;
+    }
+    .field-input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(.55) sepia(1) saturate(3) hue-rotate(220deg) !important;
+      opacity: .75 !important;
+      cursor: pointer !important;
+    }
+    :root.light .field-input[type="date"] { color-scheme: light !important; }
+    :root.light .field-input[type="date"]::-webkit-calendar-picker-indicator { filter: none !important; opacity: .6 !important; }
+
+    /* Onboarding big name input */
+    .ob-name-input {
+      transition: border-color .22s ease, box-shadow .22s ease, background .22s ease !important;
+    }
+    .ob-name-input:focus {
+      border-color: rgba(124,107,255,.5) !important;
+      box-shadow: 0 0 0 5px rgba(124,107,255,.1), 0 4px 20px rgba(124,107,255,.1) !important;
+      background: var(--surface) !important;
+    }
+
+    /* ob-free-input (subject/class tag) */
+    .ob-free-input:focus,
+    .ob-add-inp:focus {
+      border-color: rgba(0,212,170,.4) !important;
+      box-shadow: 0 0 0 4px rgba(0,212,170,.08) !important;
+    }
+
+    /* Pay inputs */
+    .pay-input {
+      transition: border-color .2s ease, box-shadow .2s ease, background .2s ease !important;
+    }
+    .pay-input:focus {
+      border-color: rgba(124,107,255,.45) !important;
+      box-shadow: 0 0 0 3px rgba(124,107,255,.09) !important;
+      background: var(--surface) !important;
+      outline: none !important;
+    }
+
+    /* Chip select visual feedback */
+    .chip:active, .ob-chip:active { transform: scale(.93) !important; }
+    .chip.sel, .ob-chip.sel {
+      box-shadow: 0 0 0 2px var(--accent), 0 3px 12px rgba(124,107,255,.2) !important;
+    }
+
+    /* Btn-row buttons — spring press */
+    .btn-primary:active { transform: scale(.97) !important; }
+    .btn-cancel:active  { transform: scale(.97) !important; }
+
+    /* Placeholder fade-in on focus */
+    .field-input::placeholder {
+      transition: opacity .2s ease !important;
+      opacity: .55 !important;
+    }
+    .field-input:focus::placeholder { opacity: .35 !important; }
+
+    /* ╔══ INPUT FIELDS — SMOOTH INTERACTION ══╗ */
+
+    /* Labels float-style: shift up slightly when field has content/focus */
+    .field-group {
+      position: relative !important;
+    }
+    .field-input {
+      transition:
+        border-color .2s ease,
+        background-color .2s ease,
+        box-shadow .22s ease,
+        transform .15s cubic-bezier(.34,1.4,.64,1) !important;
+    }
+    /* Slight lift on focus */
+    .field-input:focus {
+      transform: translateY(-1px) !important;
+      border-color: rgba(124,107,255,.5) !important;
+      background: var(--surface) !important;
+      box-shadow:
+        0 0 0 4px rgba(124,107,255,.1),
+        0 4px 16px rgba(124,107,255,.08) !important;
+    }
+    .field-input:focus::placeholder {
+      opacity: 0 !important;
+      transform: translateX(4px) !important;
+      transition: opacity .15s, transform .15s !important;
+    }
+
+    /* Search input — focus ring glow */
+    .search-input:focus {
+      transform: none !important;   /* don't shift search bar */
+      box-shadow:
+        0 0 0 4px rgba(124,107,255,.1),
+        0 2px 12px rgba(124,107,255,.06) !important;
+    }
+
+    /* Pay inputs — tighter focus style */
+    .pay-input:focus {
+      border-color: rgba(124,107,255,.5) !important;
+      box-shadow: 0 0 0 3px rgba(124,107,255,.1) !important;
+    }
+
+    /* Textarea / select */
+    select.field-input:focus {
+      transform: none !important;
+    }
+
+    /* Label smoothly highlights when its input is focused */
+    .field-group:focus-within label {
+      color: var(--accent) !important;
+      transition: color .18s ease !important;
+    }
+
+    /* Total card: count-up number */
+    #totalAmtDisplay {
+      display: inline-block;
+      transition: opacity .15s;
+    }
+    #totalAmtDisplay.counting {
+      opacity: .85;
+    }
+
   </style>
 </head>
 <body>
@@ -4506,6 +4654,8 @@
       // Always show analytics button after any render
       const _db=document.getElementById('dashBtn');
       if(_db) _db.classList.remove('hidden');
+      // Run count-up on total amount after DOM settles
+      setTimeout(runTotalCountUp, 60);
     }
 
     // Partial render — only update the cards list (used by search to preserve input focus)
@@ -4597,7 +4747,7 @@
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><circle cx="8" cy="5.5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
         <div class="total-card" onclick="(window.openTeacherDash&&window.openStudentDash)?(profile.role==='teacher'?openTeacherDash():openStudentDash()):void 0" style="cursor:pointer">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span>${td.toLocaleString('en-IN')}</div>
+          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">₹0</span></div>
           <div class="total-sub">As of ${ds}</div>
           <div class="total-meta">
             <div class="total-meta-item"><div class="total-meta-val">${ov}</div><div class="total-meta-lbl">Pending</div></div>
@@ -6120,7 +6270,7 @@
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><circle cx="8" cy="5.5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
         <div class="total-card" onclick="(window.openTeacherDash&&window.openStudentDash)?(profile.role==='teacher'?openTeacherDash():openStudentDash()):void 0" style="cursor:pointer">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span>${td.toLocaleString('en-IN')}</div>
+          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">₹0</span></div>
           <div class="total-sub">As of ${ds}</div>
           <div class="total-meta">
             <div class="total-meta-item"><div class="total-meta-val">${ov}</div><div class="total-meta-lbl">Pending</div></div>
@@ -6696,6 +6846,81 @@
       document.getElementById('studentDashBody').innerHTML=dashSkeleton();
       renderStudentDash();
     };
+
+
+    // ── Count-up animation on total overview card ──────────────────────────
+    function _runCountUp(targetVal){
+      const el=document.getElementById('totalAmtDisplay');
+      if(!el) return;
+      // Already the right value? Only animate if we just rendered
+      const duration=900; // ms
+      const fps=60;
+      const steps=Math.round(duration/(1000/fps));
+      let frame=0;
+      // Easing: ease-out cubic
+      const easeOut=t=>1-Math.pow(1-t,3);
+      const start=performance.now();
+      function tick(now){
+        const elapsed=now-start;
+        const progress=Math.min(elapsed/duration,1);
+        const eased=easeOut(progress);
+        const current=Math.round(eased*targetVal);
+        el.textContent=current.toLocaleString('en-IN');
+        if(progress<1) requestAnimationFrame(tick);
+        else el.textContent=targetVal.toLocaleString('en-IN');
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // Patch render() so count-up fires after every renderStudent call
+    const _origRenderForCountUp = render;
+    window.render = function(){
+      _origRenderForCountUp();
+      // Only count-up for student role (teacher role uses batch totals)
+      if(!isT()){
+        const target=totalDue();
+        if(target>0) setTimeout(()=>_runCountUp(target), 60);
+      }
+    };
+
+
+    // ── Total Amount Count-Up Animation ─────────────────────────────────
+    function runTotalCountUp(){
+      const el = document.getElementById('totalAmtDisplay');
+      if(!el) return;
+      const target = parseInt(el.dataset.target || '0', 10);
+      if(isNaN(target) || target === 0){
+        el.textContent = '0';
+        return;
+      }
+      // Duration scales with magnitude — bigger numbers feel weightier
+      const duration = target > 100000 ? 1100 : target > 10000 ? 900 : 750;
+      const digits = String(target).length;
+      const startVal = 0;
+      const startTime = performance.now();
+      el.classList.add('counting');
+
+      // Easing: ease-out cubic
+      function easeOut(t){ return 1 - Math.pow(1-t, 3); }
+
+      function tick(now){
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeOut(progress);
+        const current = Math.round(startVal + (target - startVal) * eased);
+
+        // Format with Indian locale commas
+        el.textContent = current.toLocaleString('en-IN');
+
+        if(progress < 1){
+          requestAnimationFrame(tick);
+        } else {
+          el.textContent = target.toLocaleString('en-IN');
+          el.classList.remove('counting');
+        }
+      }
+      requestAnimationFrame(tick);
+    }
 
     // Sync notif on load
     _syncNotifToggle();
