@@ -5939,8 +5939,8 @@
     document.getElementById('avatarEl').addEventListener('click',toggleMenu);
     document.getElementById('menuBackdrop').addEventListener('click',closeMenu);
     document.getElementById('userMenu').addEventListener('click',e=>e.stopPropagation());
-    window.doSignOut=async function(){ await signOut(auth); };
-    document.getElementById('signOutBtn').addEventListener('click',async()=>{ closeMenu(); await signOut(auth); });
+    window.doSignOut=async function(){ window._clearSWCache?.(); await signOut(auth); };
+    document.getElementById('signOutBtn').addEventListener('click',async()=>{ closeMenu(); window._clearSWCache?.(); await signOut(auth); });
     document.getElementById('editProfileBtn').addEventListener('click',()=>openProfileModal());
     document.getElementById('addBtn').addEventListener('click',openAddModal);
     document.getElementById('cancelAddBtn').addEventListener('click',closeAddModal);
@@ -7563,7 +7563,74 @@
   </div>
 
   <script>
-    if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('sw.js');
+          console.log('[App] SW registered:', reg.scope);
+
+          // ── Listen for messages from the SW ──────────────────────────────
+          navigator.serviceWorker.addEventListener('message', e => {
+            const { type, version } = e.data || {};
+            switch (type) {
+              // New SW activated — show a subtle update toast
+              case 'SW_ACTIVATED':
+                if (version) {
+                  setTimeout(() => {
+                    if (typeof toast === 'function') toast('App updated ✓', 'success');
+                  }, 800);
+                }
+                break;
+              // SW says background sync triggered — re-fetch data
+              case 'BG_SYNC_TRIGGER':
+                if (typeof loadAll === 'function') loadAll(true);
+                break;
+              // Periodic reminder check — SW says check dues
+              case 'PERIODIC_REMINDER_CHECK':
+                if (typeof checkDueReminder === 'function') checkDueReminder();
+                break;
+              // Notification tapped — navigate to relevant screen
+              case 'NOTIFICATION_CLICK':
+                window.focus();
+                break;
+            }
+          });
+
+          // ── Register periodic sync for fee reminders ──────────────────
+          if ('periodicSync' in reg) {
+            const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+            if (status.state === 'granted') {
+              await reg.periodicSync.register('fee-reminder-check', {
+                minInterval: 24 * 60 * 60 * 1000,
+              }).catch(() => {});
+            }
+          }
+
+          // ── If there's a waiting SW, tell it to activate on next navigation ──
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            if (!newSW) return;
+            newSW.addEventListener('statechange', () => {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                // New SW installed and waiting — activate silently on next load
+                newSW.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+
+        } catch(e) {
+          console.warn('[App] SW registration failed:', e);
+        }
+      });
+
+      // ── Wipe SW cache on sign-out (privacy on shared devices) ──────────
+      window._clearSWCache = () => {
+        navigator.serviceWorker.controller?.postMessage({ type: 'CLEAR_CACHE' });
+      };
+    }
 
     // PWA INSTALL POPUP -- one-time, dismissed via localStorage flag
     let deferredInstallPrompt = null;
