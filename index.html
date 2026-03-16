@@ -3051,6 +3051,28 @@
       animation: none !important;
     }
 
+    /* Teacher card — tap-to-open style */
+    .teacher-card {
+      cursor: pointer !important;
+      transition: background .14s, box-shadow .14s, transform .12s !important;
+    }
+    .teacher-card:active {
+      transform: scale(.985) !important;
+      background: var(--surface2) !important;
+    }
+    .tc-tap-hint {
+      font-size: 10px; color: var(--muted);
+      display: flex; align-items: center; gap: 4px;
+      padding: 8px 14px 10px;
+      border-top: 1px solid var(--border);
+      opacity: .7;
+    }
+    #teacherDetailSheetInner { max-height: 92vh; overflow-y: auto; }
+    #teacherDetailSheetInner::-webkit-scrollbar { display: none; }
+    #tdsDeleteBtn:active { background: rgba(255,77,109,.18) !important; }
+    #tdsEditBtn:active   { background: var(--surface3) !important; }
+    #tdsCloseBtn:active  { background: var(--surface3) !important; }
+
     /* ══════════════════════════════════════════════════════════
        INTERACTIVE TOTAL CARD — meta item hover/active/filter
     ══════════════════════════════════════════════════════════ */
@@ -3923,6 +3945,49 @@
       <div class="confirm-actions">
         <button class="btn-cancel" id="confirmCancelBtn">Cancel</button>
         <button class="btn-primary" id="confirmOkBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- TEACHER DETAIL SHEET -->
+  <div class="modal-overlay hidden" id="teacherDetailSheet">
+    <div class="modal-sheet" id="teacherDetailSheetInner" style="padding-bottom:max(52px,calc(32px + env(safe-area-inset-bottom)));">
+      <div class="modal-handle" id="teacherDetailHandle"></div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.4px;line-height:1.15;" id="tdsName"></div>
+          <div style="font-size:13px;color:var(--text2);margin-top:4px;" id="tdsSubject"></div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;letter-spacing:-1.5px;line-height:1;" id="tdsDueAmt"></span>
+            <span id="tdsDueMonths" style="font-size:12px;color:var(--muted);font-weight:600;"></span>
+            <span id="tdsOverdueBadge"></span>
+          </div>
+          <div id="tdsLastPaid" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+          <div id="tdsPartialChip" style="margin-top:4px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;padding-top:2px;">
+          <button id="tdsEditBtn" style="width:34px;height:34px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;" title="Edit">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11 2l3 3-9 9H2v-3L11 2z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="tdsDeleteBtn" style="width:34px;height:34px;border-radius:12px;background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.18);color:var(--red);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;" title="Delete">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="tdsCloseBtn" style="width:34px;height:34px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="tdsPaySection">
+        <div class="pay-tabs" id="tdsPayTabs" style="margin-bottom:10px;"></div>
+        <div id="tdsPayRows"></div>
+      </div>
+      <div style="margin-top:16px;">
+        <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Payment History
+        </div>
+        <div id="tdsHistory"></div>
       </div>
     </div>
   </div>
@@ -4802,54 +4867,25 @@
         const t=teachers[id], dm=monthsDue(id), da=calcDue(id), lps=lastPaidStr(id), ov2=dm>=3, cr=dm>=6, pb=partialBal(id);
         const tpy=payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
-        h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" style="animation-delay:${dl}s">
-          <div class="card-top"><div class="card-header">
-            <div class="card-left">
-              <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
-              <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
-              ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
+        h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s"
+          onclick="openTeacherDetail('${id}')">
+          <div class="card-top">
+            <div class="card-header">
+              <div class="card-left">
+                <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
+                <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
+                ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
+              </div>
+              <div class="due-badge">
+                <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
+                <div class="due-months">${dm===0?'All clear ✓':`${dm} month${dm>1?'s':''} due`}</div>
+                ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
+              </div>
             </div>
-            <div class="due-badge">
-              <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
-              <div class="due-months">${dm===0?'All clear ✓':`${dm} month${dm>1?'s':''} due`}</div>
-              ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
-            </div>
           </div>
-          <div style="padding:0 0 1px;">
-          <div class="pay-tabs">
-            <button class="pay-tab ${dm>0?'active':''}" id="ptab-full-${id}" onclick="switchPayTab('${id}','full')" ${dm===0?'disabled':''}>Full</button>
-            <button class="pay-tab" id="ptab-partial-${id}" onclick="switchPayTab('${id}','partial')" ${dm===0?'disabled':''}>Partial</button>
-            <button class="pay-tab ${dm===0?'active-advance':''}" id="ptab-advance-${id}" onclick="switchPayTab('${id}','advance')" ${dm>0?'disabled':''}>Advance</button>
-          </div>
-          <div class="pay-row ${dm===0?'hidden':''}" id="prow-full-${id}">
-            <input id="pay-${id}" class="pay-input" type="number" min="1" max="${dm}" placeholder="${dm>1?'Months (1–'+dm+')':dm===1?'1 month due':'No dues'}">
-            <button class="pay-btn" onclick="payMonths('${id}','full')" ${dm===0?'disabled':''}>Mark</button>
-          </div>
-          <div class="pay-row hidden" id="prow-partial-${id}">
-            <input id="pay-partial-${id}" class="pay-input" type="number" min="1" max="${t.fee-1}" placeholder="₹1 – ₹${t.fee-1}">
-            <button class="pay-btn pay-btn-partial" onclick="payMonths('${id}','partial')">Mark</button>
-          </div>
-          <div class="pay-row ${dm===0?'':'hidden'}" id="prow-advance-${id}">
-            <input id="pay-advance-${id}" class="pay-input" type="number" min="1" max="12" placeholder="Months ahead (1–12)">
-            <button class="pay-btn pay-btn-advance" onclick="payMonths('${id}','advance')">Mark</button>
-          </div>
-          </div></div>
-          <div class="card-actions">
-            <div class="history-toggle" id="tog-${id}" onclick="toggleHistory('${id}')">
-              <span style="display:inline-flex;align-items:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>History (${tpy.length})</span><svg width="10" height="10" viewBox="0 0 14 14" fill="none" class="h-arrow" style="display:block;margin-left:auto"><path d="M2 4l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <button class="edit-teacher-btn" onclick="openEditTeacher('${id}')" title="Edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M11 2l3 3-9 9H2v-3L11 2z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <button class="del-teacher-btn" onclick="deleteTeacher('${id}')" title="Delete"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          </div>
-          <div class="history-panel" id="hist-${id}">
-            ${tpy.length===0?'<div class="hist-empty">No payments yet</div>':
-              '<div class="swipe-hint">← swipe to delete</div>'+tpy.map(p=>{
-                const hb=p.type==='partial'?`<span class="hist-badge hist-partial">Partial</span>`:p.type==='advance'?`<span class="hist-badge hist-advance">Advance</span>`:'';
-                const lb=p.type==='partial'?`₹${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
-                return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')">
-                  <div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'—'}</div></div>
-                  <div class="pay-amt-tag">₹${p.amount.toLocaleString('en-IN')}</div></div>`;
-              }).join('')}
+          <div class="tc-tap-hint">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Tap to pay, view history &amp; more
           </div>
         </div>`;
         dl+=0.05;
@@ -4910,59 +4946,27 @@
         const t=teachers[id], dm=monthsDue(id), da=calcDue(id), lps=lastPaidStr(id), ov2=dm>=3, cr=dm>=6, pb=partialBal(id);
         const tpy=payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
-        h+=`
-          <div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s">
-            <div class="card-top">
-              <div class="card-header">
-                <div class="card-left">
-                  <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
-                  <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
-                  ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
-                </div>
-                <div class="due-badge">
-                  <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
-                  <div class="due-months">${dm===0?'All clear ✓':`${dm} month${dm>1?'s':''} due`}</div>
-                  ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
-                </div>
+        h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s"
+          onclick="openTeacherDetail('${id}')">
+          <div class="card-top">
+            <div class="card-header">
+              <div class="card-left">
+                <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
+                <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
+                ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
               </div>
-              <div style="padding:0 0 1px;">
-              <div class="pay-tabs">
-                <button class="pay-tab ${dm>0?'active':''}" id="ptab-full-${id}" onclick="switchPayTab('${id}','full')" ${dm===0?'disabled':''}>Full</button>
-                <button class="pay-tab" id="ptab-partial-${id}" onclick="switchPayTab('${id}','partial')" ${dm===0?'disabled':''}>Partial</button>
-                <button class="pay-tab ${dm===0?'active-advance':''}" id="ptab-advance-${id}" onclick="switchPayTab('${id}','advance')" ${dm>0?'disabled':''}>Advance</button>
-              </div>
-              <div class="pay-row ${dm===0?'hidden':''}" id="prow-full-${id}">
-                <input id="pay-${id}" class="pay-input" type="number" min="1" max="${dm}" placeholder="${dm>1?'Months (1\u2013'+dm+')':dm===1?'1 month due':'No dues'}">
-                <button class="pay-btn" onclick="payMonths('${id}','full')" ${dm===0?'disabled':''}>Mark</button>
-              </div>
-              <div class="pay-row hidden" id="prow-partial-${id}">
-                <input id="pay-partial-${id}" class="pay-input" type="number" min="1" max="${t.fee-1}" placeholder="₹1 \u2013 ₹${t.fee-1}">
-                <button class="pay-btn pay-btn-partial" onclick="payMonths('${id}','partial')">Mark</button>
-              </div>
-              <div class="pay-row ${dm===0?'':'hidden'}" id="prow-advance-${id}">
-                <input id="pay-advance-${id}" class="pay-input" type="number" min="1" max="12" placeholder="Months ahead (1\u201312)">
-                <button class="pay-btn pay-btn-advance" onclick="payMonths('${id}','advance')">Mark</button>
-              </div>
+              <div class="due-badge">
+                <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
+                <div class="due-months">${dm===0?'All clear ✓':`${dm} month${dm>1?'s':''} due`}</div>
+                ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
               </div>
             </div>
-            <div class="card-actions">
-              <div class="history-toggle" id="tog-${id}" onclick="toggleHistory('${id}')">
-                <span style="display:inline-flex;align-items:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>History (${tpy.length})</span><svg width="10" height="10" viewBox="0 0 14 14" fill="none" class="h-arrow" style="display:block;margin-left:auto"><path d="M2 4l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </div>
-              <button class="edit-teacher-btn" onclick="openEditTeacher('${id}')" title="Edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M11 2l3 3-9 9H2v-3L11 2z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button class="del-teacher-btn" onclick="deleteTeacher('${id}')" title="Delete"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            </div>
-            <div class="history-panel" id="hist-${id}">
-              ${tpy.length===0?'<div class="hist-empty">No payments yet</div>':
-                '<div class="swipe-hint">\u2190 swipe to delete</div>'+tpy.map(p=>{
-                  const hb=p.type==='partial'?`<span class="hist-badge hist-partial">Partial</span>`:p.type==='advance'?`<span class="hist-badge hist-advance">Advance</span>`:'';
-                  const lb=p.type==='partial'?`₹${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
-                  return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')">
-                    <div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'—'}</div></div>
-                    <div class="pay-amt-tag">₹${p.amount.toLocaleString('en-IN')}</div></div>`;
-                }).join('')}
-            </div>
-          </div>`;
+          </div>
+          <div class="tc-tap-hint">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Tap to pay, view history &amp; more
+          </div>
+        </div>`;
         dl=Math.min(dl+0.05, 0.3);
       }
       h+='</div>';
@@ -5779,7 +5783,8 @@
         profileModal:     () => closeProfileModal(),
         addModal:         () => closeAddModal(),
         addStudentModal:  () => closeAddStudentModal(),
-        editStudentModal: () => closeEditStudentModal(),
+        editStudentModal:     () => closeEditStudentModal(),
+        teacherDetailSheet:   () => closeTeacherDetail(),
       };
 
       // Dismiss a modal with a fly-down animation then hide it
@@ -6467,12 +6472,10 @@
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
         const pinBdg=t.pinned?`<span class="pin-badge" style="display:inline-flex;align-items:center;gap:3px;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M9 2l5 5-2 2-1-1-4 4v4H6l-1-4-4-1 4-4-1-1 2-2 3-2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="5" y1="11" x2="2" y2="14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Pinned</span>`:'';
         const isSel=selItems.has(id);
-        h+=`
-          <div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''} ${selMode?'sel-mode':''} ${isSel?'selected':''}" style="animation-delay:${dl}s" data-id="${id}"
-            onclick="if(selMode){selTap('${id}');return;}"
-            ontouchstart="void 0">
+        h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''} ${selMode?'sel-mode':''} ${isSel?'selected':''}" data-id="${id}" style="animation-delay:${dl}s"
+            onclick="if(selMode){selTap('${id}');return;}openTeacherDetail('${id}')">
             ${selMode?`<div style="display:flex;align-items:center;gap:10px;padding:10px 13px 0;">
-              <div class="sel-circle ${isSel?'checked':''}" data-sel-id="${id}" onclick="event.stopPropagation();selTap('${id}')">
+              <div class="sel-circle ${isSel?'checked':''}" onclick="event.stopPropagation();selTap('${id}')">
                 <span class="sel-tick">✓</span></div>
               <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">${t.name}</div>
               ${pinBdg}
@@ -6490,43 +6493,11 @@
                   ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
                 </div>
               </div>
-              ${selMode?'':`<div style="padding:0 0 1px;">
-              <div class="pay-tabs">
-                <button class="pay-tab ${dm>0?'active':''}" id="ptab-full-${id}" onclick="switchPayTab('${id}','full')" ${dm===0?'disabled':''}>Full</button>
-                <button class="pay-tab" id="ptab-partial-${id}" onclick="switchPayTab('${id}','partial')" ${dm===0?'disabled':''}>Partial</button>
-                <button class="pay-tab ${dm===0?'active-advance':''}" id="ptab-advance-${id}" onclick="switchPayTab('${id}','advance')" ${dm>0?'disabled':''}>Advance</button>
-              </div>
-              <div class="pay-row ${dm===0?'hidden':''}" id="prow-full-${id}">
-                <input id="pay-${id}" class="pay-input" type="number" min="1" max="${dm}" placeholder="${dm>1?'Months (1–'+dm+')':dm===1?'1 month due':'No dues'}">
-                <button class="pay-btn" onclick="payMonths('${id}','full')" ${dm===0?'disabled':''}>Mark</button>
-              </div>
-              <div class="pay-row hidden" id="prow-partial-${id}">
-                <input id="pay-partial-${id}" class="pay-input" type="number" min="1" max="${t.fee-1}" placeholder="₹1 – ₹${t.fee-1}">
-                <button class="pay-btn pay-btn-partial" onclick="payMonths('${id}','partial')">Mark</button>
-              </div>
-              <div class="pay-row ${dm===0?'':'hidden'}" id="prow-advance-${id}">
-                <input id="pay-advance-${id}" class="pay-input" type="number" min="1" max="12" placeholder="Months ahead (1–12)">
-                <button class="pay-btn pay-btn-advance" onclick="payMonths('${id}','advance')">Mark</button>
-              </div>
-              </div>
-              <div class="card-actions">
-                <div class="history-toggle" id="tog-${id}" onclick="toggleHistory('${id}')">
-                  <span style="display:inline-flex;align-items:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>History (${tpy.length})</span><svg width="10" height="10" viewBox="0 0 14 14" fill="none" class="h-arrow" style="display:block;margin-left:auto"><path d="M2 4l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
-                <button class="edit-teacher-btn" onclick="openEditTeacher('${id}')" title="Edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M11 2l3 3-9 9H2v-3L11 2z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <button class="del-teacher-btn" onclick="deleteTeacher('${id}')" title="Delete"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              </div>
-              <div class="history-panel" id="hist-${id}">
-                ${tpy.length===0?'<div class="hist-empty">No payments yet</div>':
-                  '<div class="swipe-hint">← swipe to delete</div>'+tpy.map(p=>{
-                    const hb=p.type==='partial'?`<span class="hist-badge hist-partial">Partial</span>`:p.type==='advance'?`<span class="hist-badge hist-advance">Advance</span>`:'';
-                    const lb=p.type==='partial'?`₹${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
-                    return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')">
-                      <div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'—'}</div></div>
-                      <div class="pay-amt-tag">₹${p.amount.toLocaleString('en-IN')}</div></div>`;
-                  }).join('')}
-              </div>`}
             </div>
+            ${selMode?'':`<div class="tc-tap-hint">
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Tap to pay, view history &amp; more
+            </div>`}
           </div>`;
         dl+=0.05;
       }
@@ -7071,6 +7042,138 @@
       }
     };
 
+
+    // TEACHER DETAIL SHEET
+    let _tdsId = null;
+
+    function _tdsPayHtml(id){
+      const t = teachers[id], dm = monthsDue(id);
+      const tabs =
+        `<button class="pay-tab ${dm>0?'active':''}" id="tds-ptab-full" onclick="tdsSwitchTab('full')" ${dm===0?'disabled':''}>Full</button>`+
+        `<button class="pay-tab" id="tds-ptab-partial" onclick="tdsSwitchTab('partial')" ${dm===0?'disabled':''}>Partial</button>`+
+        `<button class="pay-tab ${dm===0?'active-advance':''}" id="tds-ptab-advance" onclick="tdsSwitchTab('advance')" ${dm>0?'disabled':''}>Advance</button>`;
+      const rows =
+        `<div class="pay-row ${dm===0?'hidden':''}" id="tds-prow-full">`+
+          `<input id="tds-pay-full" class="pay-input" type="number" min="1" max="${dm}" `+
+          `placeholder="${dm>1?'Months (1\u2013'+dm+')':dm===1?'1 month due':'No dues'}">`+
+          `<button class="pay-btn" onclick="tdsPayMonths('full')" ${dm===0?'disabled':''}>Mark</button>`+
+        `</div>`+
+        `<div class="pay-row hidden" id="tds-prow-partial">`+
+          `<input id="tds-pay-partial" class="pay-input" type="number" min="1" max="${t.fee-1}" placeholder="\u20b91 \u2013 \u20b9${t.fee-1}">`+
+          `<button class="pay-btn pay-btn-partial" onclick="tdsPayMonths('partial')">Mark</button>`+
+        `</div>`+
+        `<div class="pay-row ${dm===0?'':'hidden'}" id="tds-prow-advance">`+
+          `<input id="tds-pay-advance" class="pay-input" type="number" min="1" max="12" placeholder="Months ahead (1\u201312)">`+
+          `<button class="pay-btn pay-btn-advance" onclick="tdsPayMonths('advance')">Mark</button>`+
+        `</div>`;
+      return { tabs, rows };
+    }
+
+    function _tdsHistHtml(id){
+      const tpy = payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
+      if(!tpy.length) return '<div class="hist-empty" style="text-align:center;color:var(--muted);font-size:13px;padding:18px 0;">No payments yet</div>';
+      return '<div class="swipe-hint">\u2190 swipe to delete</div>' + tpy.map(p=>{
+        const hb = p.type==='partial'?`<span class="hist-badge hist-partial">Partial</span>`:
+                   p.type==='advance'?`<span class="hist-badge hist-advance">Advance</span>`:'';
+        const lb = p.type==='partial'?`\u20b9${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
+        return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')"><div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'--'}</div></div><div class="pay-amt-tag">\u20b9${p.amount.toLocaleString('en-IN')}</div></div>`;
+      }).join('');
+    }
+
+    window.openTeacherDetail = function(id){
+      if(selMode) return;
+      _tdsId = id;
+      const t = teachers[id], dm = monthsDue(id), da = calcDue(id), pb = partialBal(id), lps = lastPaidStr(id);
+      const cr = dm>=6, ov2 = dm>=3;
+      document.getElementById('tdsName').textContent = t.name;
+      document.getElementById('tdsSubject').textContent = t.subject + ' \xb7 \u20b9' + t.fee + '/mo';
+      const dueEl = document.getElementById('tdsDueAmt');
+      dueEl.textContent = '\u20b9' + da.toLocaleString('en-IN');
+      dueEl.style.color = da===0?'var(--accent3)':cr?'var(--red)':'var(--text)';
+      document.getElementById('tdsDueMonths').textContent = dm===0?'All clear \u2713':dm+' month'+(dm>1?'s':'')+' due';
+      const badgeEl = document.getElementById('tdsOverdueBadge');
+      badgeEl.innerHTML = cr?'<span class="overdue-badge critical" style="font-size:10px;padding:3px 8px;">\u26a0 Critical</span>':
+                          ov2?'<span class="overdue-badge" style="font-size:10px;padding:3px 8px;">\u26a0 Overdue</span>':'';
+      const lpEl = document.getElementById('tdsLastPaid');
+      lpEl.textContent = lps?'Last paid: '+lps:'Never paid';
+      lpEl.style.color = lps?'var(--muted)':'var(--red)';
+      document.getElementById('tdsPartialChip').innerHTML = pb>0?`<span class="partial-chip">+\u20b9${pb.toLocaleString('en-IN')} partial</span>`:'';
+      const { tabs, rows } = _tdsPayHtml(id);
+      document.getElementById('tdsPayTabs').innerHTML = tabs;
+      document.getElementById('tdsPayRows').innerHTML = rows;
+      document.getElementById('tdsHistory').innerHTML = _tdsHistHtml(id);
+      document.getElementById('teacherDetailSheet').classList.remove('hidden');
+      const inner = document.getElementById('teacherDetailSheetInner');
+      if(inner) inner.scrollTop = 0;
+    };
+
+    function closeTeacherDetail(){
+      document.getElementById('teacherDetailSheet').classList.add('hidden');
+      _tdsId = null;
+    }
+
+    window.tdsSwitchTab = function(type){
+      ['full','partial','advance'].forEach(tp=>{
+        document.getElementById('tds-prow-'+tp)?.classList.toggle('hidden', tp!==type);
+        const btn = document.getElementById('tds-ptab-'+tp);
+        if(btn){ btn.classList.remove('active','active-partial','active-advance');
+          if(tp===type) btn.classList.add(tp==='partial'?'active-partial':tp==='advance'?'active-advance':'active'); }
+      });
+    };
+
+    window.tdsPayMonths = async function(type){
+      if(!_tdsId) return;
+      const id = _tdsId, t = teachers[id], dm = monthsDue(id);
+      const n = new Date(), po = {day:n.getDate(), month:n.getMonth()+1, year:n.getFullYear()};
+      if(type==='full'){
+        if(!dm) return toast('No dues pending \u2713','success');
+        const v = parseInt(document.getElementById('tds-pay-full')?.value);
+        if(!v||v<1||v>dm) return toast('Enter 1\u2013'+dm,'error');
+        const amt = v*t.fee;
+        if(!await confirm2('Confirm Payment',`Mark <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Mark','💸')) return;
+        const p={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,amount:amt,type:'full',paidOn:po,timestamp:Date.now()};
+        const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
+        toast(`Paid \u20b9${amt.toLocaleString('en-IN')} \u2713`,'success');
+      } else if(type==='partial'){
+        const amt = parseInt(document.getElementById('tds-pay-partial')?.value);
+        if(!amt||amt<1) return toast('Enter an amount','error');
+        if(amt>=t.fee) return toast('Use Full tab for \u20b9'+t.fee+'+','error');
+        const tot = partialBal(id)+amt;
+        if(tot>=t.fee) return toast('Total covers full month — use Full tab','error');
+        if(!await confirm2('Partial Payment',`Record <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> partial to ${t.name}?<br><small style="color:var(--muted)">Still owed: \u20b9${(t.fee-tot).toLocaleString('en-IN')}</small>`,'Record','🧾')) return;
+        const p={teacherId:id,teacherName:t.name,subject:t.subject,amount:amt,type:'partial',paidOn:po,timestamp:Date.now()};
+        const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
+        toast('Partial \u20b9'+amt.toLocaleString('en-IN')+' recorded','success');
+      } else if(type==='advance'){
+        if(dm>0) return toast('Clear dues first','error');
+        const v = parseInt(document.getElementById('tds-pay-advance')?.value);
+        if(!v||v<1||v>12) return toast('Enter 1\u201312 months','error');
+        const amt = v*t.fee;
+        if(!await confirm2('Advance Payment',`Pay <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> advance for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Pay','🚀')) return;
+        const p={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,advanceMonths:v,amount:amt,type:'advance',paidOn:po,timestamp:Date.now()};
+        const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
+        toast('Advance \u20b9'+amt.toLocaleString('en-IN')+' paid \u2713','success');
+      }
+      setTimeout(updateTotalCard, 80);
+      renderCards();
+      if(!document.getElementById('teacherDetailSheet').classList.contains('hidden'))
+        window.openTeacherDetail(id);
+    };
+
+    document.getElementById('tdsCloseBtn')?.addEventListener('click', closeTeacherDetail);
+    document.getElementById('teacherDetailSheet')?.addEventListener('click', e=>{
+      if(e.target===document.getElementById('teacherDetailSheet')) closeTeacherDetail();
+    });
+    document.getElementById('tdsEditBtn')?.addEventListener('click', ()=>{
+      if(!_tdsId) return;
+      const id=_tdsId; closeTeacherDetail(); window.openEditTeacher(id);
+    });
+    document.getElementById('tdsDeleteBtn')?.addEventListener('click', async()=>{
+      if(!_tdsId) return;
+      const id=_tdsId; closeTeacherDetail(); await window.deleteTeacher(id);
+    });
+    window.closeTeacherDetail = closeTeacherDetail;
+
     window._patchedRenderStudent = function(){
       window._activeStatusFilter = 'all';
       renderStudent();
@@ -7119,13 +7222,15 @@
           { el: ()=>{ const m=document.getElementById('addStudentModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>closeAddStudentModal() },
           { el: ()=>{ const m=document.getElementById('editStudentModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>closeEditStudentModal() },
           { el: ()=>{ const m=document.getElementById('profileModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>closeProfileModal() },
-          { el: ()=>{ const m=document.getElementById('teacherAddChoiceSheet'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>m.classList.add('hidden') },
+          { el: ()=>{ const m=document.getElementById('teacherAddChoiceSheet'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>document.getElementById('teacherAddChoiceSheet').classList.add('hidden') },
           { el: ()=>{ const m=document.getElementById('assignBatchModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>document.getElementById('assignBatchModal').classList.add('hidden') },
           { el: ()=>{ const m=document.getElementById('addStandaloneStudentModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>document.getElementById('addStandaloneStudentModal').classList.add('hidden') },
           { el: ()=>{ const m=document.getElementById('editTeacherModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>document.getElementById('editTeacherModal').classList.add('hidden') },
           { el: ()=>{ const m=document.getElementById('editStandaloneStudentModal'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>document.getElementById('editStandaloneStudentModal').classList.add('hidden') },
           // User menu
           { el: ()=>{ const m=document.getElementById('userMenu'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>closeMenu() },
+          // Teacher detail sheet
+          { el: ()=>{ const m=document.getElementById('teacherDetailSheet'); return m&&!m.classList.contains('hidden')?m:null; }, close: ()=>closeTeacherDetail() },
           // Selection mode
           { el: ()=>selMode?true:null, close: ()=>exitSelMode() },
         ];
