@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>Fee Tracker</title>
   <link rel="manifest" href="manifest.json">
@@ -3171,6 +3173,73 @@
       letter-spacing: .2px;
     }
 
+    /* ═══════════════════════════════════════════════════════════════
+       SMOOTH TRANSITION SYSTEM v5
+    ═══════════════════════════════════════════════════════════════ */
+
+    @keyframes pageSlideInRight  { from{opacity:0;transform:translateX(44px)}  to{opacity:1;transform:translateX(0)} }
+    @keyframes pageSlideOutLeft  { from{opacity:1;transform:translateX(0)}     to{opacity:0;transform:translateX(-44px)} }
+    @keyframes pageSlideInLeft   { from{opacity:0;transform:translateX(-44px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes pageSlideOutRight { from{opacity:1;transform:translateX(0)}     to{opacity:0;transform:translateX(44px)} }
+    @keyframes pageFadeIn        { from{opacity:0;transform:scale(.97)}        to{opacity:1;transform:scale(1)} }
+    @keyframes pageFadeOut       { from{opacity:1;transform:scale(1)}          to{opacity:0;transform:scale(.97)} }
+    @keyframes sheetSlideUp      { from{opacity:0;transform:translateY(100%)}  to{opacity:1;transform:translateY(0)} }
+    @keyframes sheetSlideDown    { from{opacity:1;transform:translateY(0)}     to{opacity:0;transform:translateY(100%)} }
+    @keyframes overlayIn         { from{opacity:0} to{opacity:1} }
+    @keyframes popIn   { 0%{opacity:0;transform:scale(.88) translateY(8px)} 65%{transform:scale(1.02)} 100%{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes popOut  { from{opacity:1;transform:scale(1)} to{opacity:0;transform:scale(.92)} }
+    @keyframes itemFadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes buttonPop  { 0%{transform:scale(1)} 40%{transform:scale(.93)} 100%{transform:scale(1)} }
+    @keyframes checkPop   { 0%{transform:scale(0) rotate(-20deg)} 60%{transform:scale(1.25) rotate(5deg)} 100%{transform:scale(1) rotate(0)} }
+    @keyframes rippleFade { from{transform:scale(0);opacity:.4} to{transform:scale(2.5);opacity:0} }
+    @keyframes pulseGlow  { 0%,100%{box-shadow:0 0 0 0 rgba(124,107,255,0)} 50%{box-shadow:0 0 0 8px rgba(124,107,255,.15)} }
+
+    .screen-enter-right { animation: pageSlideInRight  .32s cubic-bezier(.25,.85,.35,1) both !important; }
+    .screen-enter-left  { animation: pageSlideInLeft   .32s cubic-bezier(.25,.85,.35,1) both !important; }
+    .screen-enter-fade  { animation: pageFadeIn        .28s cubic-bezier(.25,.85,.35,1) both !important; }
+    .screen-exit-left   { animation: pageSlideOutLeft  .24s cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
+    .screen-exit-right  { animation: pageSlideOutRight .24s cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
+    .screen-exit-fade   { animation: pageFadeOut       .2s  cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
+
+    .modal-sheet.opening { animation: sheetSlideUp   .34s cubic-bezier(.22,1,.36,1) both !important; }
+    .modal-sheet.closing { animation: sheetSlideDown .24s cubic-bezier(.4,0,1,.8)   both !important; }
+    .confirm-box.opening { animation: popIn  .28s cubic-bezier(.22,1,.36,1) both !important; }
+    .confirm-box.closing { animation: popOut .18s ease                      both !important; }
+
+    .teacher-card,.batch-card,.standalone-card,.student-card {
+      animation: itemFadeUp .3s cubic-bezier(.22,1,.36,1) both;
+    }
+    .total-card      { animation: pageFadeIn .4s cubic-bezier(.22,1,.36,1) both; }
+    .section-label   { animation: itemFadeUp .3s .08s ease both; }
+    .search-wrap     { animation: itemFadeUp .3s .04s ease both; }
+    .dash-stat-card  { animation: itemFadeUp .3s  cubic-bezier(.22,1,.36,1) both; }
+    .dash-chart-card { animation: itemFadeUp .32s cubic-bezier(.22,1,.36,1) both; }
+    .dash-insight-card { animation: itemFadeUp .34s cubic-bezier(.22,1,.36,1) both; }
+
+    .ob-step-enter { animation: pageSlideInRight .3s  cubic-bezier(.22,1,.36,1) both !important; }
+    .ob-step-exit  { animation: pageSlideOutLeft .2s  cubic-bezier(.4,0,1,.8)   both !important; pointer-events:none; }
+
+    .sel-circle.checked .sel-tick { animation: checkPop .22s cubic-bezier(.34,1.56,.64,1) both !important; opacity:1 !important; transform:none !important; }
+    .user-menu:not(.hidden) { animation: popIn .22s cubic-bezier(.22,1,.36,1) both !important; }
+    .sel-bar:not(.hidden)   { animation: sheetSlideUp .3s cubic-bezier(.22,1,.36,1) both !important; }
+
+    .add-btn { animation: pulseGlow 2.8s ease-in-out infinite !important; }
+    .add-btn:active,.btn-primary:active,.btn-cancel:active,.google-btn:active,
+    .pay-btn:active,.ob-continue-btn:active,.bd-back:active,.avatar-btn:active {
+      animation: buttonPop .16s ease both !important;
+    }
+
+    .tap-ripple {
+      position:absolute; border-radius:50%;
+      background:rgba(255,255,255,.2); pointer-events:none;
+      animation: rippleFade .5s ease-out forwards;
+    }
+    .teacher-card:active,.batch-card:active {
+      transform: scale(.985) !important;
+      transition: transform .1s ease !important;
+    }
+
+
   </style>
 </head>
 <body>
@@ -4660,7 +4729,7 @@
       // Sync theme toggle to current state
       if (typeof window._refreshThemeUI === 'function') window._refreshThemeUI();
     }
-    function closeProfileModal(){ document.getElementById('profileModal').classList.add('hidden'); }
+    function closeProfileModal(){ closeModal('profileModal'); }
 
     async function saveProfile(){
       const btn=document.getElementById('saveProfileBtn'); btn.textContent='Saving…'; btn.disabled=true;
@@ -4825,7 +4894,14 @@
         JSON.stringify(batches)  !== _prevBatches  ||
         JSON.stringify(payments) !== _prevPayments
       );
-      if(dataChanged || !appRendered) render();
+      if(dataChanged || !appRendered){
+        render();
+        // Stagger card entries
+        setTimeout(()=>{
+          const inner = document.getElementById('appInner');
+          staggerChildren(inner, '.teacher-card,.batch-card,.standalone-card,.student-card', 0, 0.045, 0.28);
+        }, 10);
+      }
     }
 
     // PAY
@@ -4906,8 +4982,7 @@
       const _di=document.getElementById('f-lastpaid');
       if(_di){const _n=new Date(),_p=new Date(_n.getFullYear(),_n.getMonth()-1,1);
         _di.value=`${_p.getFullYear()}-${String(_p.getMonth()+1).padStart(2,'0')}-01`;}
-      document.getElementById('addModal').classList.remove('hidden');
-      document.getElementById('addModal').classList.remove('hidden');
+      openModal('addModal');
     }
     function openAddBatchModal(){
       document.getElementById('teacherAddChoiceSheet').classList.add('hidden');
@@ -4917,7 +4992,7 @@
       document.getElementById('addModal').classList.remove('hidden');
     }
     function closeAddModal(){
-      document.getElementById('addModal').classList.add('hidden');
+      closeModal('addModal');
       ['f-name','f-subject','f-fee','f-lastpaid','b-name','b-subject','b-class','b-session','b-fee','b-timing']
         .forEach(i=>{ const e=document.getElementById(i); if(e) e.value=''; });
     }
@@ -5043,6 +5118,105 @@
     // MENU
     function toggleMenu(e){ e?.stopPropagation(); const m=document.getElementById('userMenu'),b=document.getElementById('menuBackdrop'),isHidden=m.classList.contains('hidden'); if(isHidden){ m.style.animation='none'; m.classList.remove('hidden'); void m.offsetWidth; m.style.animation=''; b.classList.remove('hidden'); updateMenuThemeLabel(); } else { m.classList.add('hidden'); b.classList.add('hidden'); } }
     function closeMenu(){ document.getElementById('userMenu').classList.add('hidden'); document.getElementById('menuBackdrop').classList.add('hidden'); }
+
+    // ═══════════════════════════════════════════════════════════
+    // TRANSITION HELPERS
+    // ═══════════════════════════════════════════════════════════
+
+    // Navigate: exit current screen left, enter next screen right
+    function screenTo(showId, hideId, direction='right') {
+      const show = document.getElementById(showId);
+      const hide = document.getElementById(hideId);
+      if (!show || !hide) return;
+
+      const exitCls  = direction === 'right' ? 'screen-exit-left'  : 'screen-exit-right';
+      const enterCls = direction === 'right' ? 'screen-enter-right' : 'screen-enter-left';
+
+      hide.classList.add(exitCls);
+      // After exit animation, actually hide it
+      const onHideDone = () => {
+        hide.classList.add('hidden');
+        hide.classList.remove(exitCls);
+        hide.removeEventListener('animationend', onHideDone);
+      };
+      hide.addEventListener('animationend', onHideDone, { once: true });
+
+      show.classList.remove('hidden');
+      show.classList.add(enterCls);
+      show.addEventListener('animationend', () => {
+        show.classList.remove(enterCls);
+      }, { once: true });
+    }
+
+    function screenFadeTo(showId, hideId) {
+      const show = document.getElementById(showId);
+      const hide = document.getElementById(hideId);
+      if (!show || !hide) return;
+
+      hide.classList.add('screen-exit-fade');
+      hide.addEventListener('animationend', () => {
+        hide.classList.add('hidden');
+        hide.classList.remove('screen-exit-fade');
+      }, { once: true });
+
+      show.classList.remove('hidden');
+      show.classList.add('screen-enter-fade');
+      show.addEventListener('animationend', () => {
+        show.classList.remove('screen-enter-fade');
+      }, { once: true });
+    }
+
+    // Animated modal open/close
+    function openModal(overlayId) {
+      const overlay = document.getElementById(overlayId);
+      if (!overlay) return;
+      overlay.classList.remove('hidden');
+      const sheet = overlay.querySelector('.modal-sheet');
+      if (sheet) {
+        sheet.classList.add('opening');
+        sheet.addEventListener('animationend', () => sheet.classList.remove('opening'), { once: true });
+      }
+    }
+
+    function closeModal(overlayId) {
+      const overlay = document.getElementById(overlayId);
+      if (!overlay) return;
+      const sheet = overlay.querySelector('.modal-sheet');
+      if (sheet) {
+        sheet.classList.add('closing');
+        sheet.addEventListener('animationend', () => {
+          sheet.classList.remove('closing');
+          overlay.classList.add('hidden');
+        }, { once: true });
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    // Stagger children with animation delay
+    function staggerChildren(container, selector, baseDelay=0, step=0.05, max=0.35) {
+      const items = container?.querySelectorAll(selector);
+      if (!items) return;
+      items.forEach((el, i) => {
+        el.style.animationDelay = Math.min(baseDelay + i * step, max) + 's';
+      });
+    }
+
+    // Add tap ripple to an element
+    function addRipple(el, e) {
+      const rect = el.getBoundingClientRect();
+      const x = (e.clientX || rect.left + rect.width/2) - rect.left;
+      const y = (e.clientY || rect.top  + rect.height/2) - rect.top;
+      const size = Math.max(rect.width, rect.height) * 1.6;
+      const r = document.createElement('span');
+      r.className = 'tap-ripple';
+      r.style.cssText = `width:${size}px;height:${size}px;left:${x - size/2}px;top:${y - size/2}px`;
+      el.style.position = el.style.position || 'relative';
+      el.style.overflow = 'hidden';
+      el.appendChild(r);
+      r.addEventListener('animationend', () => r.remove(), { once: true });
+    }
+
 
     // RENDER
     function render(){
@@ -5396,8 +5570,7 @@
     }
 
     window.openBatchDetail=async function(bid){
-      document.getElementById('appScreen').classList.add('hidden');
-      document.getElementById('batchDetailScreen').classList.remove('hidden');
+      screenTo('batchDetailScreen','appScreen','right');
       document.getElementById('bdTitle').textContent=batches[bid].name;
       document.getElementById('bdSub').textContent=batches[bid].subject||'';
       // Batch detail skeleton
@@ -5428,8 +5601,7 @@
       `;
       await loadBatchDetail(bid);};
     window.closeBatchDetail=function(){
-      document.getElementById('batchDetailScreen').classList.add('hidden');
-      document.getElementById('appScreen').classList.remove('hidden');
+      screenTo('appScreen','batchDetailScreen','left');
       currentBatchId=null;batchStudents={};batchPayments=[];};
 
     let pendingStudents=[]; // [{name,date,feeStatus,lastPaid}]
@@ -7052,7 +7224,7 @@
       document.getElementById('editTeacherPayDateInp').value=t.lastPaidDate||'';
       document.getElementById('editTeacherModal').classList.remove('hidden');
     };
-    function closeEditTeacherModal(){ document.getElementById('editTeacherModal').classList.add('hidden'); }
+    function closeEditTeacherModal(){ closeModal('editTeacherModal'); }
     document.getElementById('closeEditTeacherBtn')?.addEventListener('click',closeEditTeacherModal);
     document.getElementById('cancelEditTeacherBtn')?.addEventListener('click',closeEditTeacherModal);
     document.getElementById('confirmEditTeacherBtn')?.addEventListener('click',async()=>{
@@ -7130,8 +7302,7 @@
 
     // PATCH dashboard openers to show skeleton first
     window.openTeacherDash=async function(force=false){
-      document.getElementById('appScreen').classList.add('hidden');
-      document.getElementById('teacherDashScreen').classList.remove('hidden');
+      screenFadeTo('teacherDashScreen','appScreen');
       document.getElementById('teacherDashBody').innerHTML=dashSkeleton();
       const btn=document.getElementById('teacherDashRefresh'); if(btn)btn.classList.add('spinning');
       await renderTeacherDash();
@@ -7139,19 +7310,16 @@
     };
     window.closeTeacherDash=function(){
       destroyCharts(_tchDashCharts);
-      document.getElementById('teacherDashScreen').classList.add('hidden');
-      document.getElementById('appScreen').classList.remove('hidden');
+      screenFadeTo('appScreen','teacherDashScreen');
     };
     window.openStudentDash=function(){
-      document.getElementById('appScreen').classList.add('hidden');
-      document.getElementById('studentDashScreen').classList.remove('hidden');
+      screenFadeTo('studentDashScreen','appScreen');
       document.getElementById('studentDashBody').innerHTML=dashSkeleton();
       renderStudentDash();
     };
     window.closeStudentDash=function(){
       destroyCharts(_stuDashCharts);
-      document.getElementById('studentDashScreen').classList.add('hidden');
-      document.getElementById('appScreen').classList.remove('hidden');
+      screenFadeTo('appScreen','studentDashScreen');
     };
 
 
@@ -7600,7 +7768,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
-          const reg = await navigator.serviceWorker.register('sw.js');
+          const reg = await navigator.serviceWorker.register('sw.js?v=8');
           console.log('[App] SW registered:', reg.scope);
 
           // ── Listen for messages from the SW ──────────────────────────────

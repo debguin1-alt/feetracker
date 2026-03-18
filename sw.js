@@ -451,31 +451,35 @@ self.addEventListener('fetch', event => {
 /** Stale-while-revalidate for the app shell — always instant, always fresh */
 async function swrShell(request) {
   const cache  = await caches.open(SHELL_CACHE);
+
+  // Network-first with 2.5s timeout — ensures fresh HTML is always served
+  // when online, preventing the stale-cache trap after deploys.
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 2500);
+
+  let networkRes = null;
+  try {
+    networkRes = await fetch(new Request(request, { signal: ctrl.signal }));
+    clearTimeout(tid);
+    if (networkRes.ok) {
+      // Cache fresh copy under both URL forms
+      const clone1 = networkRes.clone();
+      const clone2 = networkRes.clone();
+      cache.put(request, clone1);
+      cache.put('./index.html', clone2);
+      return networkRes;
+    }
+  } catch {
+    clearTimeout(tid);
+    // Network unavailable or timed out — fall through to cache
+  }
+
+  // Offline fallback: serve cache
   const cached =
     await cache.match(request) ||
     await cache.match('./index.html') ||
     await cache.match('./');
-
-  // Kick off background revalidation
-  const revalidate = fetch(request).then(async res => {
-    if (res.ok) {
-      await cache.put(request, res.clone());
-      // Also store under the canonical key so both '/' and '/index.html' hit cache
-      await cache.put('./index.html', res.clone());
-    }
-    return res;
-  }).catch(() => null);
-
-  // Return cached copy immediately if available
-  if (cached) {
-    // Don't await revalidation — it updates in background
-    revalidate.catch(() => {});
-    return cached;
-  }
-
-  // No cache yet — wait for network
-  const res = await revalidate;
-  if (res) return res;
+  if (cached) return cached;
 
   return new Response(
     '<html><body style="font-family:sans-serif;text-align:center;padding:40px">'
