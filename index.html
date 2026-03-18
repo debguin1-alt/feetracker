@@ -14,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="Fee Tracker">
   <link rel="apple-touch-icon" href="icon-192.png">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
   <style>
     /* ═══════════════════════════════════════════════════
@@ -3657,7 +3658,7 @@
       <div class="hist-title">Payment History</div>
       <button class="hist-export-btn" onclick="exportHistoryCSV()" id="histExportBtn">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v7M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 10v1.5A1.5 1.5 0 0 0 2.5 13h9A1.5 1.5 0 0 0 13 11.5V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        Export CSV
+        Export
       </button>
     </div>
     <div class="hist-body" id="histBody">
@@ -7109,7 +7110,7 @@
       const subjLine=[subjs.length?subjs.join(', '):'No subjects set',classes.length?classes.join(', '):'',sess].filter(Boolean).join(' · ');
       let h=`
         ${!profile.displayName?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon"><svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M26 9L5 21l21 12 21-12L26 9z" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M5 30l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="M5 39l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".28"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Set up your teacher profile</div><div class="setup-banner-sub">Add your subjects and session</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
-        <div class="teacher-mode-header"><div class="tmh-icon"><svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M26 9L5 21l21 12 21-12L26 9z" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M5 30l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="M5 39l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".28"/></svg></div><div class="tmh-info"><div class="tmh-title">Teacher Dashboard</div><div class="tmh-sub">${subjLine}</div></div>
+        <div class="teacher-mode-header" onclick="window.openTeacherDash&&window.openTeacherDash()" style="cursor:pointer"><div class="tmh-icon"><svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M26 9L5 21l21 12 21-12L26 9z" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M5 30l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="M5 39l21 12 21-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".28"/></svg></div><div class="tmh-info"><div class="tmh-title">Teacher Dashboard</div><div class="tmh-sub">${subjLine}</div></div>
 
         </div>
         <div class="search-wrap"><span class="search-icon"><svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;flex-shrink:0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg></span><input class="search-input" type="text" placeholder="Search batch…" value="${searchQ}" oninput="onSearch(this.value)" onkeydown="if(event.key==='Enter'){this.blur();}" />${searchQ?`<span class="search-clear" onclick="onSearch('');this.previousElementSibling.value='';this.previousElementSibling.focus();" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);z-index:2;"><svg width='11' height='11' viewBox='0 0 12 12' fill='none' style='display:block'><line x1='1' y1='1' x2='11' y2='11' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/><line x1='11' y1='1' x2='1' y2='11' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg></span>`:''}</div>
@@ -7304,6 +7305,9 @@
         batchSummaries.push({bid,name:b.name,stuCount:stuKeys.length,paidCount:bPaid,dueCount:stuKeys.length-bPaid,due:bDue});
       }
       const collRate=grandStudents>0?Math.round((grandPaid/grandStudents)*100):0;
+      // Add standalone students to total count
+      const standaloneCount = (typeof _standaloneStudents !== 'undefined') ? _standaloneStudents.length : 0;
+      grandStudents += standaloneCount;
       const overdueStu=grandStudents-grandPaid;
       const monthLabels=[],monthAmts=[];
       for(let i=5;i>=0;i--){const d=new Date(curY,curM-1-i,1);monthLabels.push(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]);monthAmts.push(allPays.filter(p=>p.paidOn&&p.paidOn.month===d.getMonth()+1&&p.paidOn.year===d.getFullYear()).reduce((s,p)=>s+(p.amount||0),0));}
@@ -7873,7 +7877,7 @@
     // ══════════════════════════════════════════════════════════════════
     // HISTORY SCREEN
     // ══════════════════════════════════════════════════════════════════
-    let _histFilter = 'all';
+    let _histFilter = 'all'; let _histBatch = 'all'; let _histPeriod = 'all';
 
     window.openHistoryScreen = function(){
       const hs = document.getElementById('historyScreen');
@@ -7884,7 +7888,7 @@
       hs.style.transition = 'opacity .2s ease';
       hs.style.opacity = '1';
       setTimeout(() => hs.style.transition = '', 220);
-      _histFilter = 'all';
+      _histFilter = 'all'; _histBatch = 'all'; _histPeriod = 'all';
       _renderHistory();
     };
 
@@ -7900,71 +7904,131 @@
       }, 190);
     };
 
-    window._setHistFilter = function(f){ _histFilter = f; _renderHistory(); };
+    window._setHistFilter  = function(f){ _histFilter  = f; _renderHistory(); };
+    window._setHistBatch   = function(b){ _histBatch   = b; _histFilter='all'; _renderHistory(); };
+    window._setHistPeriod  = function(p){ _histPeriod  = p; _histBatch='all'; _histFilter='all'; _renderHistory(); };
 
     function _renderHistory(){
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const filEl = document.getElementById('histFilters');
       const conEl = document.getElementById('histContent');
       if (!filEl || !conEl) return;
+      const now = new Date();
 
       // Build unified payment list
       let allPays = [];
       if (!isT()) {
-        // Student role
         allPays = payments.map(p => ({
           ...p,
           _name: teachers[p.teacherId]?.name || p.teacherName || 'Teacher',
           _sub : teachers[p.teacherId]?.subject || '',
+          _batch: '',
         }));
       } else {
-        // Teacher role — gather from batchPayments and standalone
         allPays = payments.map(p => ({
           ...p,
-          _name: p.studentName || batchStudents?.[p.studentId]?.name || 'Student',
-          _sub : batches?.[p.batchId]?.name || '',
+          _name : p.studentName || batchStudents?.[p.studentId]?.name || 'Student',
+          _sub  : batches?.[p.batchId]?.name || 'Standalone',
+          _batch: p.batchId || 'standalone',
         }));
       }
 
-      // Filter
-      const shown = _histFilter === 'all' ? allPays
-        : allPays.filter(p => (p.type || 'full') === _histFilter);
+      // ── Period filter ──────────────────────────────────────
+      let periodFiltered = allPays;
+      if (_histPeriod === 'this') {
+        periodFiltered = allPays.filter(p => {
+          const d = p.paidOn ? new Date(p.paidOn.year,(p.paidOn.month||1)-1,1) : new Date(p.timestamp);
+          return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+        });
+      } else if (_histPeriod === 'prev') {
+        const pm = now.getMonth()-1 < 0 ? 11 : now.getMonth()-1;
+        const py = now.getMonth()-1 < 0 ? now.getFullYear()-1 : now.getFullYear();
+        periodFiltered = allPays.filter(p => {
+          const d = p.paidOn ? new Date(p.paidOn.year,(p.paidOn.month||1)-1,1) : new Date(p.timestamp);
+          return d.getMonth()===pm && d.getFullYear()===py;
+        });
+      }
+
+      // ── Batch filter (teacher only) ────────────────────────
+      let batchFiltered = periodFiltered;
+      if (isT() && _histBatch !== 'all') {
+        batchFiltered = periodFiltered.filter(p =>
+          (_histBatch === 'standalone' ? !p.batchId : p.batchId === _histBatch)
+        );
+      }
+
+      // ── Type filter ────────────────────────────────────────
+      const shown = _histFilter === 'all' ? batchFiltered
+        : batchFiltered.filter(p => (p.type||'full') === _histFilter);
       shown.sort((a,b) => b.timestamp - a.timestamp);
 
-      // Filter chips
-      const cts = { all:allPays.length,
-        full:allPays.filter(p=>!p.type||p.type==='full').length,
-        partial:allPays.filter(p=>p.type==='partial').length,
-        advance:allPays.filter(p=>p.type==='advance').length };
-      filEl.innerHTML = [['all','All'],['full','Full'],['partial','Partial'],['advance','Advance']]
-        .filter(([k])=>cts[k]>0)
-        .map(([k,l]) =>
-          `<div class="hist-filter-chip${_histFilter===k?' active':''}" onclick="_setHistFilter('${k}')">${l} <span style="opacity:.65">${cts[k]}</span></div>`
-        ).join('');
+      // ── Build filter rows ──────────────────────────────────
+      // Row 1: period
+      const periodRow = `<div class="hist-filter-row" style="margin-bottom:8px">
+        ${[['all','All time'],['this','This month'],['prev','Last month']].map(([k,l]) =>
+          `<div class="hist-filter-chip${_histPeriod===k?' active':''}" onclick="_setHistPeriod('${k}')">${l}</div>`
+        ).join('')}
+      </div>`;
 
+      // Row 2: batch chips (teacher) or type chips (student)
+      let row2 = '';
+      if (isT()) {
+        // Batch chips
+        const batchChips = [['all', 'All batches', periodFiltered.length]];
+        const bNames = {};
+        periodFiltered.forEach(p => {
+          const bid = p.batchId || 'standalone';
+          const bname = p._sub || 'Standalone';
+          if (!bNames[bid]) bNames[bid] = { name: bname, count: 0 };
+          bNames[bid].count++;
+        });
+        Object.entries(bNames).sort((a,b)=>b[1].count-a[1].count).forEach(([bid,{name,count}]) => {
+          batchChips.push([bid, name, count]);
+        });
+        row2 = `<div class="hist-filter-row" style="margin-bottom:8px">
+          ${batchChips.map(([k,l,c]) =>
+            `<div class="hist-filter-chip${_histBatch===k?' active':''}" onclick="_setHistBatch('${k}')" style="${k==='all'?'':'max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'}">${l}${c!==undefined?` <span style="opacity:.6">${c}</span>`:''}</div>`
+          ).join('')}
+        </div>`;
+      }
+
+      // Row 3: type chips
+      const typeBase = isT() ? batchFiltered : periodFiltered;
+      const cts = {
+        all    : typeBase.length,
+        full   : typeBase.filter(p=>!p.type||p.type==='full').length,
+        partial: typeBase.filter(p=>p.type==='partial').length,
+        advance: typeBase.filter(p=>p.type==='advance').length,
+      };
+      const typeRow = `<div class="hist-filter-row">
+        ${[['all','All'],['full','Full'],['partial','Partial'],['advance','Advance']].filter(([k])=>cts[k]>0).map(([k,l]) =>
+          `<div class="hist-filter-chip${_histFilter===k?' active':''}" onclick="_setHistFilter('${k}')">${l} <span style="opacity:.6">${cts[k]}</span></div>`
+        ).join('')}
+      </div>`;
+
+      filEl.innerHTML = periodRow + row2 + typeRow;
+
+      // ── Render list ────────────────────────────────────────
       if (!shown.length) {
         conEl.innerHTML = `<div class="hist-empty-state">
           <div class="hist-empty-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="1.5" opacity=".2"/><polyline points="24,13 24,24 30,28" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="hist-empty-txt">No payments yet</div>
-          <div class="hist-empty-sub">Payments you record will appear here,<br>grouped by month.</div>
+          <div class="hist-empty-txt">No payments found</div>
+          <div class="hist-empty-sub">Try changing the filters above.</div>
         </div>`;
         return;
       }
 
-      // Group by month-year
       const grps = {};
       shown.forEach(p => {
-        const d = p.paidOn
-          ? new Date(p.paidOn.year, (p.paidOn.month||1)-1, p.paidOn.day||1)
-          : new Date(p.timestamp);
-        const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-        if (!grps[key]) grps[key] = { label: MONTHS[d.getMonth()]+' '+d.getFullYear(), pays:[], total:0 };
+        const d = p.paidOn ? new Date(p.paidOn.year,(p.paidOn.month||1)-1,p.paidOn.day||1) : new Date(p.timestamp);
+        const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+        if (!grps[key]) grps[key] = { label:MONTHS[d.getMonth()]+' '+d.getFullYear(), pays:[], total:0 };
         grps[key].pays.push(p);
-        grps[key].total += p.amount || 0;
+        grps[key].total += p.amount||0;
       });
 
       const ICON = {
-        full: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="4" width="13" height="9" rx="2" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="1.4"/><line x1="1.5" y1="7.5" x2="14.5" y2="7.5" stroke="currentColor" stroke-width="1.4"/><rect x="3" y="10" width="4" height="1.5" rx=".75" fill="currentColor"/></svg>`,
+        full   :`<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="4" width="13" height="9" rx="2" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="1.4"/><line x1="1.5" y1="7.5" x2="14.5" y2="7.5" stroke="currentColor" stroke-width="1.4"/><rect x="3" y="10" width="4" height="1.5" rx=".75" fill="currentColor"/></svg>`,
         partial:`<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="4" width="13" height="9" rx="2" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="1.4"/><line x1="1.5" y1="7.5" x2="14.5" y2="7.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 10.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
         advance:`<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.4"/><path d="M5 10l3-4 3 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
       };
@@ -7975,15 +8039,15 @@
         out += `<div class="hist-month-group">
           <div class="hist-month-label"><span>${g.label}</span><span class="hist-month-total">₹${g.total.toLocaleString('en-IN')}</span></div>`;
         g.pays.forEach(p => {
-          const t  = p.type || 'full';
-          const ic = ICON[t] || ICON.full;
-          const d  = p.paidOn ? `${p.paidOn.day||1} ${MONTHS[(p.paidOn.month||1)-1]}` : new Date(p.timestamp).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+          const t = p.type||'full', ic = ICON[t]||ICON.full;
+          const d = p.paidOn ? `${p.paidOn.day||1} ${MONTHS[(p.paidOn.month||1)-1]}` : new Date(p.timestamp).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
           const mo = p.monthsPaid ? ` · ${p.monthsPaid} mo` : '';
+          const sub2 = isT() ? (p._sub || 'Standalone') : (p._sub || '');
           out += `<div class="hist-row">
             <div class="hist-row-icon ${t}">${ic}</div>
             <div class="hist-row-body">
               <div class="hist-row-name">${p._name}</div>
-              <div class="hist-row-sub">${d}${mo}${p._sub?' · '+p._sub:''}</div>
+              <div class="hist-row-sub">${sub2}${d?' · '+d:''}${mo}</div>
             </div>
             <div class="hist-row-amt">₹${(p.amount||0).toLocaleString('en-IN')}</div>
           </div>`;
@@ -7995,31 +8059,150 @@
 
     window.exportHistoryCSV = function(){
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      let rows = [isT() ? 'Date,Student,Batch,Type,Months,Amount' : 'Date,Teacher,Subject,Type,Months,Amount'];
-      const all = isT()
-        ? payments.map(p=>({
-            date: p.paidOn?`${p.paidOn.year}-${String(p.paidOn.month).padStart(2,'0')}-${String(p.paidOn.day||1).padStart(2,'0')}`:new Date(p.timestamp).toISOString().slice(0,10),
-            name: p.studentName||batchStudents?.[p.studentId]?.name||'Student',
-            sub:  batches?.[p.batchId]?.name||'',
-            type: p.type||'full', months:p.monthsPaid||1, amt:p.amount||0
-          }))
-        : payments.map(p=>({
-            date: p.paidOn?`${p.paidOn.year}-${String(p.paidOn.month).padStart(2,'0')}-${String(p.paidOn.day||1).padStart(2,'0')}`:new Date(p.timestamp).toISOString().slice(0,10),
-            name: teachers[p.teacherId]?.name||p.teacherName||'Teacher',
-            sub:  teachers[p.teacherId]?.subject||'',
-            type: p.type||'full', months:p.monthsPaid||1, amt:p.amount||0
-          }));
-      all.sort((a,b)=>b.date.localeCompare(a.date))
-         .forEach(r=>rows.push([r.date,`"${r.name}"`,`"${r.sub}"`,r.type,r.months,r.amt].join(',')));
-      const blob = new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'});
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      const now  = new Date();
-      a.href = url;
-      a.download = `payments-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}.csv`;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-      toast('CSV downloaded','success');
+      const now = new Date();
+
+      // Build filtered data based on current history filters
+      let allPays = [];
+      if (!isT()) {
+        allPays = payments.map(p => ({
+          date: p.paidOn?`${p.paidOn.year}-${String(p.paidOn.month).padStart(2,'0')}-${String(p.paidOn.day||1).padStart(2,'0')}`:new Date(p.timestamp).toISOString().slice(0,10),
+          name: teachers[p.teacherId]?.name||p.teacherName||'Teacher',
+          sub:  teachers[p.teacherId]?.subject||'',
+          type: p.type||'full', months:p.monthsPaid||1, amt:p.amount||0,
+          ts: p.timestamp, paidOn: p.paidOn, batchId: null,
+        }));
+      } else {
+        allPays = payments.map(p => ({
+          date: p.paidOn?`${p.paidOn.year}-${String(p.paidOn.month).padStart(2,'0')}-${String(p.paidOn.day||1).padStart(2,'0')}`:new Date(p.timestamp).toISOString().slice(0,10),
+          name: p.studentName||batchStudents?.[p.studentId]?.name||'Student',
+          sub:  batches?.[p.batchId]?.name||'Standalone',
+          type: p.type||'full', months:p.monthsPaid||1, amt:p.amount||0,
+          ts: p.timestamp, paidOn: p.paidOn, batchId: p.batchId||null,
+        }));
+      }
+
+      // Apply same filters as the history view
+      if (_histPeriod === 'this') {
+        allPays = allPays.filter(p => {
+          const d = p.paidOn ? new Date(p.paidOn.year,(p.paidOn.month||1)-1,1) : new Date(p.ts);
+          return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+        });
+      } else if (_histPeriod === 'prev') {
+        const pm = now.getMonth()-1<0?11:now.getMonth()-1;
+        const py = now.getMonth()-1<0?now.getFullYear()-1:now.getFullYear();
+        allPays = allPays.filter(p => {
+          const d = p.paidOn ? new Date(p.paidOn.year,(p.paidOn.month||1)-1,1) : new Date(p.ts);
+          return d.getMonth()===pm && d.getFullYear()===py;
+        });
+      }
+      if (isT() && _histBatch !== 'all') {
+        allPays = allPays.filter(p => _histBatch==='standalone' ? !p.batchId : p.batchId===_histBatch);
+      }
+      if (_histFilter !== 'all') allPays = allPays.filter(p => p.type===_histFilter);
+      allPays.sort((a,b)=>b.date.localeCompare(a.date));
+
+      if (!allPays.length) { toast('No data to export','error'); return; }
+
+      // ── Build styled XLSX if SheetJS is available ──────────────────
+      if (typeof XLSX !== 'undefined') {
+        const wb = XLSX.utils.book_new();
+        const title = isT() ? 'Fee Tracker — Collections' : 'Fee Tracker — Payments';
+        const subTitle = `Exported: ${now.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}`;
+        const headers = isT()
+          ? ['Date','Student','Batch','Type','Months','Amount (₹)']
+          : ['Date','Teacher','Subject','Type','Months','Amount (₹)'];
+
+        // Build array of arrays (AOA) with 2 title rows + header + data
+        const aoa = [
+          [title],
+          [subTitle],
+          [],
+          headers,
+          ...allPays.map(p => [p.date, p.name, p.sub, p.type.charAt(0).toUpperCase()+p.type.slice(1), p.months, p.amt]),
+          [],
+          ['', '', '', '', 'TOTAL', allPays.reduce((s,p)=>s+p.amt,0)],
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+        // Column widths
+        ws['!cols'] = [{wch:12},{wch:22},{wch:22},{wch:10},{wch:8},{wch:14}];
+
+        // Merge title row across all columns
+        ws['!merges'] = [
+          {s:{r:0,c:0},e:{r:0,c:5}},
+          {s:{r:1,c:0},e:{r:1,c:5}},
+        ];
+
+        // Style helpers
+        const titleStyle  = {font:{bold:true,sz:14,color:{rgb:'7C6BFF'}},alignment:{horizontal:'left'},fill:{fgColor:{rgb:'0D0D1F'}}};
+        const subStyle    = {font:{sz:10,color:{rgb:'8A8AB5'}},fill:{fgColor:{rgb:'0D0D1F'}}};
+        const headerStyle = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'4A35E0'}},alignment:{horizontal:'center'},border:{bottom:{style:'medium',color:{rgb:'7C6BFF'}}}};
+        const rowEven     = {fill:{fgColor:{rgb:'13132B'}},font:{sz:10,color:{rgb:'EEEEF8'}}};
+        const rowOdd      = {fill:{fgColor:{rgb:'0D0D1F'}},font:{sz:10,color:{rgb:'EEEEF8'}}};
+        const amtStyle    = {font:{bold:true,sz:10,color:{rgb:'00D4AA'}},numFmt:'#,##0'};
+        const totalStyle  = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'7C6BFF'}},numFmt:'#,##0'};
+        const totalLblSty = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'7C6BFF'}}};
+
+        // Apply styles
+        const setCellStyle = (r,c,sty) => {
+          const addr = XLSX.utils.encode_cell({r,c});
+          if (!ws[addr]) ws[addr] = {v:''};
+          ws[addr].s = sty;
+        };
+
+        // Title rows
+        for(let c=0;c<=5;c++) setCellStyle(0,c,titleStyle);
+        for(let c=0;c<=5;c++) setCellStyle(1,c,subStyle);
+
+        // Header row (row index 3)
+        headers.forEach((_,c) => setCellStyle(3,c,headerStyle));
+
+        // Data rows (starting row 4)
+        const typeColors = {full:'00D4AA',partial:'FF9A3C',advance:'7C6BFF'};
+        allPays.forEach((p,i) => {
+          const r = 4+i;
+          const base = i%2===0?rowEven:rowOdd;
+          for(let c=0;c<=5;c++){
+            const addr = XLSX.utils.encode_cell({r,c});
+            if(!ws[addr]) ws[addr]={v:''};
+            if(c===3){
+              ws[addr].s={...base,font:{...base.font,bold:true,color:{rgb:typeColors[p.type]||'EEEEF8'}}};
+            } else if(c===5){
+              ws[addr].s={...amtStyle,fill:base.fill};
+              ws[addr].t='n';
+            } else {
+              ws[addr].s=base;
+            }
+          }
+        });
+
+        // Total row
+        const totalR = 4+allPays.length+1;
+        for(let c=0;c<=5;c++) setCellStyle(totalR,c,c===4||c===5?totalStyle:totalLblSty);
+        const totalAmtAddr = XLSX.utils.encode_cell({r:totalR,c:5});
+        if(ws[totalAmtAddr]) ws[totalAmtAddr].t='n';
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Payments');
+
+        const periodLabel = _histPeriod==='this'?`-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`:_histPeriod==='prev'?`-prev-month`:'';
+        const batchLabel  = isT()&&_histBatch!=='all'?`-${(batches[_histBatch]?.name||'standalone').replace(/\s+/g,'-')}`:'';
+        const fname = `fee-history${periodLabel}${batchLabel}.xlsx`;
+        XLSX.writeFile(wb, fname);
+        toast('Excel file exported', 'success');
+
+      } else {
+        // SheetJS not loaded — fall back to CSV
+        const headers = isT()?'Date,Student,Batch,Type,Months,Amount':'Date,Teacher,Subject,Type,Months,Amount';
+        const rows = [headers, ...allPays.map(p=>[p.date,`"${p.name}"`,`"${p.sub}"`,p.type,p.months,p.amt].join(','))];
+        const blob = new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href=url; a.download=`payments-${now.getFullYear()}.csv`;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+        toast('CSV exported (install app for Excel)','success');
+      }
     };
 
 </script>
