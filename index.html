@@ -3194,26 +3194,7 @@
     @keyframes rippleFade { from{transform:scale(0);opacity:.4} to{transform:scale(2.5);opacity:0} }
     @keyframes pulseGlow  { 0%,100%{box-shadow:0 0 0 0 rgba(124,107,255,0)} 50%{box-shadow:0 0 0 8px rgba(124,107,255,.15)} }
 
-    .screen-enter-right { animation: pageSlideInRight  .32s cubic-bezier(.25,.85,.35,1) both !important; }
-    .screen-enter-left  { animation: pageSlideInLeft   .32s cubic-bezier(.25,.85,.35,1) both !important; }
-    .screen-enter-fade  { animation: pageFadeIn        .28s cubic-bezier(.25,.85,.35,1) both !important; }
-    .screen-exit-left   { animation: pageSlideOutLeft  .24s cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
-    .screen-exit-right  { animation: pageSlideOutRight .24s cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
-    .screen-exit-fade   { animation: pageFadeOut       .2s  cubic-bezier(.4,0,1,.8)    both !important; pointer-events:none !important; }
-
-    .modal-sheet.opening { animation: sheetSlideUp   .34s cubic-bezier(.22,1,.36,1) both !important; }
-    .modal-sheet.closing { animation: sheetSlideDown .24s cubic-bezier(.4,0,1,.8)   both !important; }
-    .confirm-box.opening { animation: popIn  .28s cubic-bezier(.22,1,.36,1) both !important; }
-    .confirm-box.closing { animation: popOut .18s ease                      both !important; }
-
-    .teacher-card,.batch-card,.standalone-card,.student-card {
-      animation: itemFadeUp .3s cubic-bezier(.22,1,.36,1) both;
-    }
     .total-card      { animation: pageFadeIn .4s cubic-bezier(.22,1,.36,1) both; }
-    .section-label   { animation: itemFadeUp .3s .08s ease both; }
-    .search-wrap     { animation: itemFadeUp .3s .04s ease both; }
-    .dash-stat-card  { animation: itemFadeUp .3s  cubic-bezier(.22,1,.36,1) both; }
-    .dash-chart-card { animation: itemFadeUp .32s cubic-bezier(.22,1,.36,1) both; }
     .dash-insight-card { animation: itemFadeUp .34s cubic-bezier(.22,1,.36,1) both; }
 
     .ob-step-enter { animation: pageSlideInRight .3s  cubic-bezier(.22,1,.36,1) both !important; }
@@ -3223,20 +3204,12 @@
     .user-menu:not(.hidden) { animation: popIn .22s cubic-bezier(.22,1,.36,1) both !important; }
     .sel-bar:not(.hidden)   { animation: sheetSlideUp .3s cubic-bezier(.22,1,.36,1) both !important; }
 
-    .add-btn { animation: pulseGlow 2.8s ease-in-out infinite !important; }
-    .add-btn:active,.btn-primary:active,.btn-cancel:active,.google-btn:active,
-    .pay-btn:active,.ob-continue-btn:active,.bd-back:active,.avatar-btn:active {
-      animation: buttonPop .16s ease both !important;
-    }
+    .btn-primary:active,.btn-cancel:active { animation: buttonPop .16s ease both !important; }
 
     .tap-ripple {
       position:absolute; border-radius:50%;
       background:rgba(255,255,255,.2); pointer-events:none;
       animation: rippleFade .5s ease-out forwards;
-    }
-    .teacher-card:active,.batch-card:active {
-      transform: scale(.985) !important;
-      transition: transform .1s ease !important;
     }
 
 
@@ -4896,11 +4869,6 @@
       );
       if(dataChanged || !appRendered){
         render();
-        // Stagger card entries
-        setTimeout(()=>{
-          const inner = document.getElementById('appInner');
-          staggerChildren(inner, '.teacher-card,.batch-card,.standalone-card,.student-card', 0, 0.045, 0.28);
-        }, 10);
       }
     }
 
@@ -5129,23 +5097,36 @@
       const hide = document.getElementById(hideId);
       if (!show || !hide) return;
 
-      const exitCls  = direction === 'right' ? 'screen-exit-left'  : 'screen-exit-right';
-      const enterCls = direction === 'right' ? 'screen-enter-right' : 'screen-enter-left';
+      const xSign = direction === 'right' ? 1 : -1;
 
-      hide.classList.add(exitCls);
-      // After exit animation, actually hide it
-      const onHideDone = () => {
-        hide.classList.add('hidden');
-        hide.classList.remove(exitCls);
-        hide.removeEventListener('animationend', onHideDone);
-      };
-      hide.addEventListener('animationend', onHideDone, { once: true });
+      // Exit: slide out current screen
+      hide.style.transition   = 'opacity .22s ease, transform .22s cubic-bezier(.4,0,.6,1)';
+      hide.style.transform    = `translateX(${xSign * -32}px)`;
+      hide.style.opacity      = '0';
+      hide.style.pointerEvents = 'none';
 
+      // Enter: prepare new screen off-stage
       show.classList.remove('hidden');
-      show.classList.add(enterCls);
-      show.addEventListener('animationend', () => {
-        show.classList.remove(enterCls);
-      }, { once: true });
+      show.style.transition = '';
+      show.style.transform  = `translateX(${xSign * 32}px)`;
+      show.style.opacity    = '0';
+      void show.offsetHeight; // force layout
+
+      show.style.transition = 'opacity .26s ease, transform .26s cubic-bezier(.25,.85,.35,1)';
+      show.style.transform  = 'translateX(0)';
+      show.style.opacity    = '1';
+
+      setTimeout(() => {
+        hide.classList.add('hidden');
+        hide.style.transition = '';
+        hide.style.transform  = '';
+        hide.style.opacity    = '';
+        hide.style.pointerEvents = '';
+
+        show.style.transition = '';
+        show.style.transform  = '';
+        show.style.opacity    = '';
+      }, 280);
     }
 
     function screenFadeTo(showId, hideId) {
@@ -5153,44 +5134,41 @@
       const hide = document.getElementById(hideId);
       if (!show || !hide) return;
 
-      hide.classList.add('screen-exit-fade');
-      hide.addEventListener('animationend', () => {
-        hide.classList.add('hidden');
-        hide.classList.remove('screen-exit-fade');
-      }, { once: true });
+      // Phase 1: fade out the current screen
+      hide.style.transition = 'opacity .18s ease';
+      hide.style.opacity    = '0';
+      hide.style.pointerEvents = 'none';
 
-      show.classList.remove('hidden');
-      show.classList.add('screen-enter-fade');
-      show.addEventListener('animationend', () => {
-        show.classList.remove('screen-enter-fade');
-      }, { once: true });
+      setTimeout(() => {
+        hide.classList.add('hidden');
+        hide.style.transition = '';
+        hide.style.opacity    = '';
+        hide.style.pointerEvents = '';
+
+        // Phase 2: show and fade in the new screen
+        show.classList.remove('hidden');
+        show.style.opacity    = '0';
+        show.style.transition = '';
+        // Force layout so transition plays
+        void show.offsetHeight;
+        show.style.transition = 'opacity .2s ease';
+        show.style.opacity    = '1';
+        setTimeout(() => {
+          show.style.transition = '';
+          show.style.opacity    = '';
+        }, 210);
+      }, 190);
     }
 
     // Animated modal open/close
     function openModal(overlayId) {
-      const overlay = document.getElementById(overlayId);
-      if (!overlay) return;
-      overlay.classList.remove('hidden');
-      const sheet = overlay.querySelector('.modal-sheet');
-      if (sheet) {
-        sheet.classList.add('opening');
-        sheet.addEventListener('animationend', () => sheet.classList.remove('opening'), { once: true });
-      }
+      const el = document.getElementById(overlayId);
+      if (el) el.classList.remove('hidden');
     }
 
     function closeModal(overlayId) {
-      const overlay = document.getElementById(overlayId);
-      if (!overlay) return;
-      const sheet = overlay.querySelector('.modal-sheet');
-      if (sheet) {
-        sheet.classList.add('closing');
-        sheet.addEventListener('animationend', () => {
-          sheet.classList.remove('closing');
-          overlay.classList.add('hidden');
-        }, { once: true });
-      } else {
-        overlay.classList.add('hidden');
-      }
+      const el = document.getElementById(overlayId);
+      if (el) el.classList.add('hidden');
     }
 
     // Stagger children with animation delay
@@ -6064,15 +6042,9 @@
         document.getElementById('obName').value = prefillName;
         document.getElementById('onboardScreen').classList.remove('hidden');
       } else {
-        // If we have cached data, render it BEFORE showing the screen
-        // so there's never a skeleton flash between splash and real content
-        const hasCachedData = isT() ? Object.keys(batches).length > 0 : Object.keys(teachers).length > 0;
-        if (hasCachedData) {
-          render(); // pre-render from IDB cache while still behind the splash
-        }
         hideSplash();
         document.getElementById('appScreen').classList.remove('hidden');
-        await loadAll(true); // Firestore sync — silent, no skeleton shown
+        await loadAll(false); // renders from cache instantly, then re-renders only if Firestore data differs
         // Init notifications after data is loaded (so checkLocalReminder has data)
         setTimeout(() => {
           initNotifications();
