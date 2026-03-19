@@ -3507,10 +3507,19 @@
         width: 100% !important;
         padding-left: 32px !important;
         padding-right: 32px !important;
-        /* Hide avatar + add btn — those live in sidebar on desktop */
       }
       /* Hide mobile-only topbar elements on desktop */
       .topbar .avatar-btn { display: none !important; }
+      /* Hide "Fee Tracker" title text — shown in sidebar already */
+      .topbar .topbar-title { display: none !important; }
+      /* Hide sidebar on login and onboard screens */
+      body.page-login #desktopSidebar,
+      body.page-onboard #desktopSidebar { display: none !important; }
+      /* Login screen full-width on desktop (no sidebar) */
+      body.page-login #loginScreen {
+        left: 0 !important; right: 0 !important;
+        max-width: none !important; transform: none !important;
+      }
 
       /* Total card wider */
       .total-card { border-radius: 24px !important; }
@@ -3565,8 +3574,31 @@
         transform: none !important;
         box-shadow: none !important;
       }
-      .dash-body { max-width: 820px; margin: 0 auto; padding: 0 32px 72px !important; }
-      .dash-topbar { max-width: 820px; margin: 0 auto; padding-left: 32px !important; padding-right: 32px !important; }
+      .dash-body { max-width: 900px; margin: 0 auto; padding: 0 32px 72px !important; }
+      .dash-topbar { max-width: 900px; margin: 0 auto; padding-left: 32px !important; padding-right: 32px !important; }
+
+      /* Analytics stat grid — 4 columns on desktop */
+      .dash-stat-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 12px !important; margin-bottom: 24px !important; }
+      .dash-stat-card { padding: 18px 18px 16px !important; border-radius: 20px !important; }
+      .dash-stat-val  { font-size: 26px !important; }
+
+      /* Analytics two-column layout for charts + insights */
+      .dash-two-col {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 14px !important;
+        align-items: start !important;
+      }
+      .dash-two-col-wide {
+        display: grid !important;
+        grid-template-columns: 2fr 1fr !important;
+        gap: 14px !important;
+        align-items: start !important;
+      }
+      .dash-chart-card { border-radius: 20px !important; padding: 20px !important; }
+      .dash-insight-card { border-radius: 20px !important; padding: 18px 20px !important; }
+
+      /* Stat row on desktop */
       .dash-stat-row { grid-template-columns: repeat(4, 1fr) !important; }
 
       /* History screen */
@@ -3663,12 +3695,10 @@
   <div class="blob blob2"></div>
   <div class="blob blob3"></div>
 
-  <!-- ── DESKTOP SIDEBAR (hidden on mobile via JS class on body) ── -->
+  <!-- ── DESKTOP SIDEBAR (960px+ only, hidden on mobile/login) ── -->
   <nav id="desktopSidebar" style="display:none;">
     <div class="sb-logo">
-      <div class="sb-logo-icon">
-        <svg width="20" height="20" viewBox="0 0 22 22" fill="none"><rect x="2" y="12" width="4" height="8" rx="1.5" fill="rgba(255,255,255,.5)"/><rect x="9" y="7" width="4" height="13" rx="1.5" fill="rgba(255,255,255,.75)"/><rect x="16" y="2" width="4" height="18" rx="1.5" fill="#fff"/></svg>
-      </div>
+      <img src="icon-512.png" alt="Fee Tracker" style="width:36px;height:36px;border-radius:12px;flex-shrink:0;object-fit:cover;box-shadow:0 4px 14px rgba(124,107,255,.35);">
       <div>
         <div class="sb-logo-name">Fee Tracker</div>
         <div class="sb-logo-sub">Smart · Simple · Personal</div>
@@ -3677,40 +3707,53 @@
 
     <div class="sb-section-label">Navigation</div>
 
-    <button class="sb-item active" id="sbHome" onclick="closeBatchDetail();document.getElementById('batchDetailScreen')?.classList.add('hidden');document.getElementById('teacherDashScreen')?.classList.add('hidden');document.getElementById('studentDashScreen')?.classList.add('hidden');document.getElementById('historyScreen')?.classList.add('hidden');document.getElementById('appScreen')?.classList.remove('hidden');sbSetActive('sbHome');">
+    <button class="sb-item active" id="sbHome" onclick="sbGoHome()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l6-4.5L14 8v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 15v-5h4v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Home
     </button>
 
-    <button class="sb-item" id="sbAnalytics" onclick="(isT()?window.openTeacherDash:window.openStudentDash)?.();sbSetActive('sbAnalytics');">
+    <button class="sb-item" id="sbAnalytics" onclick="sbGoAnalytics()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="2" y1="14" x2="2" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="4,11 6.5,7 9,9 12,5 14,6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
       Analytics
     </button>
 
-    <button class="sb-item" id="sbHistory" onclick="window.openHistoryScreen?.();sbSetActive('sbHistory');">
+    <button class="sb-item" id="sbHistory" onclick="sbGoHistory()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       History
     </button>
 
-    <button class="sb-item" id="sbAdd" onclick="openAddModal?.()">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="5" x2="8" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="5" y1="8" x2="11" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Add New
-    </button>
-
     <div class="sb-spacer"></div>
 
-    <button class="sb-item" id="sbProfile" onclick="openProfileModal?.()">
+    <div class="sb-section-label">Account</div>
+
+    <button class="sb-item" id="sbProfile" onclick="sbOpenProfile()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       Profile
     </button>
 
-    <div class="sb-user" id="sbUserCard" onclick="window.doSignOut?.()">
+    <!-- Desktop profile info card at bottom -->
+    <div class="sb-user" id="sbUserCard">
       <div class="sb-user-av" id="sbUserAv">?</div>
       <div class="sb-user-info">
         <div class="sb-user-name" id="sbUserName">Loading…</div>
-        <div class="sb-user-email" id="sbUserEmail">Sign out</div>
+        <div class="sb-user-email" id="sbUserEmail" style="font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
       </div>
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;color:var(--muted)"><path d="M10 7H2M8 4.5L10.5 7 8 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 3H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <!-- Three-dot menu -->
+      <div style="position:relative;">
+        <button id="sbUserMenuBtn" onclick="event.stopPropagation();sbToggleUserMenu()" style="width:28px;height:28px;border-radius:8px;background:var(--surface3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="3" r="1.2" fill="currentColor"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/></svg>
+        </button>
+        <div id="sbUserMenu" style="display:none;position:absolute;bottom:36px;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:14px;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,.5);padding:6px;z-index:200;">
+          <div onclick="closeMenu?.();openProfileModal?.();sbCloseSideUserMenu()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--text);font-weight:500;transition:background .12s;" onmouseenter="this.style.background='var(--surface3)'" onmouseleave="this.style.background=''">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11 2l3 3-9 9H2v-3L11 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Edit Profile
+          </div>
+          <div onclick="sbCloseSideUserMenu();window.doSignOut?.()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--red);font-weight:500;transition:background .12s;margin-top:2px;" onmouseenter="this.style.background='rgba(255,77,109,.07)'" onmouseleave="this.style.background=''">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M10 7H2M8 4.5L10.5 7 8 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 3H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Sign Out
+          </div>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -6547,8 +6590,9 @@
       document.getElementById('menuName').textContent  = user.displayName||'User';
       document.getElementById('menuEmail').textContent = user.email||'';
       document.getElementById('loginScreen').classList.add('hidden');
-      // Sync desktop sidebar user card
+      // Sync desktop sidebar user card + show sidebar
       window._syncSidebarUser?.(user);
+      sbSetPage?.('home');
 
       // ── Populate splash skeleton topbar with real user avatar immediately ──
       // This makes the splash→app transition seamless — no name/avatar pop
@@ -6578,6 +6622,8 @@
         const prefillName = user.displayName||'';
         document.getElementById('obName').value = prefillName;
         document.getElementById('onboardScreen').classList.remove('hidden');
+        sbSetPage?.('onboard');
+        window._sbRefreshLayout?.();
       } else {
         hideSplash();
         document.getElementById('appScreen').classList.remove('hidden');
@@ -6708,6 +6754,8 @@
       if(s&&!s.classList.contains('fade-out')){
         hideSplash();
         document.getElementById('loginScreen').classList.remove('hidden');
+        sbSetPage?.('login');
+        window._sbRefreshLayout?.();
         const ls2=document.getElementById('loginSkeleton');
         const lc2=document.getElementById('loginContent');
         if(ls2){ ls2.classList.add('fade-out'); setTimeout(()=>{ls2.classList.add('hidden');if(lc2){lc2.style.opacity='1';lc2.style.pointerEvents='auto';lc2.classList.add('visible');}},420); }
@@ -6725,6 +6773,8 @@
         document.getElementById('onboardScreen').classList.add('hidden');
         document.getElementById('appScreen').classList.add('hidden');
         document.getElementById('loginScreen').classList.remove('hidden');
+        sbSetPage?.('login');
+        window._sbRefreshLayout?.();
         // Hide login skeleton once real UI shows
         // Fade out login skeleton smoothly
         const ls=document.getElementById('loginSkeleton');
@@ -7733,27 +7783,33 @@
       const dark=isDarkMode(),tc=dark?'rgba(255,255,255,.55)':'rgba(30,30,60,.6)',gc=dark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)';
       body.innerHTML=`
         <div class="dash-stat-grid">
-          <div class="dash-stat-card" style="--stat-glow:rgba(124,107,255,.08)"><div class="dash-stat-icon"><svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M26 11L8 21l18 10 18-10L26 11z" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 25v8c0 4 5.8 7.5 13 7.5S39 37 39 33v-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="44" y1="21" x2="44" y2="31" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="44" cy="33" r="2.2" fill="currentColor"/></svg></div><div class="dash-stat-val">${grandStudents}</div><div class="dash-stat-label">Total Students</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(0,212,170,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M11 3L1 9l10 6 10-6-10-6z" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M1 14l10 6 10-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg></div><div class="dash-stat-val">${bKeys.length}</div><div class="dash-stat-label">Active Batches</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(255,209,102,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><circle cx="11" cy="11" r="9" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7.5h7M7.5 7.5v1.2a5.5 5.5 0 0 0 5.5 5.5M7.5 7.5h2.5a3.5 3.5 0 0 1 0 7H7.5M11 14.5l3.5 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div><div class="dash-stat-val" style="font-size:17px">${dashFmt(grandMonthly)}</div><div class="dash-stat-label">Monthly Potential</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(255,77,109,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M11 3L1 19h20L11 3z" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="11" y1="9" x2="11" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="16.5" r="1.1" fill="currentColor"/></svg></div><div class="dash-stat-val" style="font-size:17px;color:${grandDue>0?'var(--yellow)':'var(--accent3)'}">${dashFmt(grandDue)}</div><div class="dash-stat-label">Outstanding Dues</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(124,107,255,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 2L2 7l9 5 9-5-9-5z" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 12l9 5 9-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg></div><div class="dash-stat-val">${grandStudents}</div><div class="dash-stat-label">Total Students</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(0,212,170,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="6" width="18" height="13" rx="3" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.6"/><path d="M7 6V4a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div><div class="dash-stat-val">${bKeys.length}</div><div class="dash-stat-label">Active Batches</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(255,209,102,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><path d="M8 7.5h6M8 7.5v1a4.5 4.5 0 0 0 4.5 4.5M8 7.5h2a2.5 2.5 0 0 1 0 5H8M10.5 13l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div><div class="dash-stat-val" style="font-size:19px">${dashFmt(grandMonthly)}</div><div class="dash-stat-label">Monthly Potential</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(255,77,109,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 2L1 20h20L11 2z" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="11" y1="9" x2="11" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="16.5" r="1.1" fill="currentColor"/></svg></div><div class="dash-stat-val" style="font-size:19px;color:${grandDue>0?'var(--yellow)':'var(--accent3)'}">${dashFmt(grandDue)}</div><div class="dash-stat-label">Outstanding Dues</div></div>
         </div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Collection Rate</div><div class="dash-chart-sub">Student headcount — paid vs pending</div>
-          <div style="display:flex;align-items:center;gap:16px">
-            <div class="dash-canvas-wrap" style="width:130px;height:130px;flex-shrink:0"><canvas id="tchDonutChart"></canvas></div>
-            <div style="flex:1"><div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:${collRate>=80?'var(--accent3)':collRate>=50?'var(--yellow)':'var(--red)'}">${collRate}%</div>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:12px">of students paid</div>
-              <div style="font-size:11px;color:var(--accent3);margin-bottom:3px"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>${grandPaid} students paid</div>
-              <div style="font-size:11px;color:var(--red)">${overdueStu} students pending</div>
+        <div class="dash-two-col">
+          <div>
+            <div class="dash-chart-card" style="margin-bottom:14px"><div class="dash-chart-title">Collection Rate</div><div class="dash-chart-sub">Students paid vs pending</div>
+              <div style="display:flex;align-items:center;gap:20px;padding-top:8px">
+                <div class="dash-canvas-wrap" style="width:120px;height:120px;flex-shrink:0"><canvas id="tchDonutChart"></canvas></div>
+                <div><div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;letter-spacing:-1.5px;color:${collRate>=80?'var(--accent3)':collRate>=50?'var(--yellow)':'var(--red)'}">${collRate}%</div>
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:10px">of students paid</div>
+                  <div style="font-size:12px;color:var(--accent3);margin-bottom:4px">✓ ${grandPaid} paid</div>
+                  <div style="font-size:12px;color:var(--red)">${overdueStu} pending</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-chart-card"><div class="dash-chart-title">Monthly Revenue</div><div class="dash-chart-sub">Last 6 months collected</div><div class="dash-canvas-wrap" style="height:160px;margin-top:8px"><canvas id="tchLineChart"></canvas></div></div>
+          </div>
+          <div>
+            <div class="dash-chart-card" style="margin-bottom:14px"><div class="dash-chart-title">Per-Batch Collection</div><div class="dash-chart-sub">Paid vs pending per batch</div><div class="dash-canvas-wrap" style="height:${Math.max(140,bKeys.length*44)}px;margin-top:8px"><canvas id="tchBarChart"></canvas></div></div>
+            <div class="dash-insight-card"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.4"/><path d="M4 6h8M4 9h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Batch Breakdown</div>
+              ${batchSummaries.sort((a,b)=>b.due-a.due).map(bs=>{const pct=bs.stuCount>0?Math.round((bs.paidCount/bs.stuCount)*100):0;const fc=pct>=80?'var(--accent3)':pct>=50?'var(--yellow)':'var(--red)';return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text)">${bs.name}</span><span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:${fc}">${pct}%</span></div><div style="font-size:10px;color:var(--muted);margin-bottom:5px">${bs.stuCount} students · ${dashFmt(bs.due)} due</div><div class="dash-prog-bar"><div class="dash-prog-fill" style="width:${pct}%;background:${fc}"></div></div></div>`;}).join('')}
             </div>
           </div>
         </div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Per-Batch Collection</div><div class="dash-chart-sub">Paid vs pending per batch</div><div class="dash-canvas-wrap" style="height:${Math.max(160,bKeys.length*54)}px"><canvas id="tchBarChart"></canvas></div></div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Monthly Revenue</div><div class="dash-chart-sub">Last 6 months</div><div class="dash-canvas-wrap" style="height:160px"><canvas id="tchLineChart"></canvas></div></div>
-        <div class="dash-insight-card"><div class="dash-insight-title"><svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;flex-shrink:0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> Batch Breakdown</div>
-          ${batchSummaries.sort((a,b)=>b.due-a.due).map(bs=>{const pct=bs.stuCount>0?Math.round((bs.paidCount/bs.stuCount)*100):0;const fc=pct>=80?'var(--accent3)':pct>=50?'var(--yellow)':'var(--red)';return `<div style="margin-bottom:16px"><div class="dash-prog-header"><div class="dash-prog-label">${bs.name}</div><div style="font-size:10px;color:var(--muted)">${bs.stuCount} students · ${dashFmt(bs.due)} due</div></div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:${fc}">${pct}% paid</span><span style="font-size:10px;color:var(--muted)">${bs.paidCount}/${bs.stuCount}</span></div><div class="dash-prog-bar"><div class="dash-prog-fill" style="width:${pct}%;background:${fc}"></div></div></div>`;}).join('')}
-        </div>
-        ${overdueList.length?`<div class="dash-insight-card"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M7 2.5L0.5 13.5h13L7 2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="7" x2="7" y2="10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="12" r=".7" fill="currentColor"/></svg> Top Overdue Students</div>${overdueList.slice(0,8).map((s,i)=>`<div class="dash-insight-row"><div class="dash-ins-rank ${i<3?'top':''}">${i+1}</div><div class="dash-ins-name"><div class="dash-ins-nm">${s.name}</div><div class="dash-ins-sub">${s.batch} · ${s.mo}mo due</div></div><div class="dash-ins-amt red">${dashFmt(s.due)}</div></div>`).join('')}</div>`:''}`;
+        ${overdueList.length?`<div class="dash-insight-card" style="margin-top:14px"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5L.5 13h13L7 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.5" r=".7" fill="currentColor"/></svg> Top Overdue Students</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">${overdueList.slice(0,8).map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:12px;border:1px solid var(--border)"><div style="width:24px;height:24px;border-radius:50%;background:${i<3?'rgba(255,77,109,.15)':'var(--surface3)'};display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:11px;font-weight:800;color:${i<3?'var(--red)':'var(--muted)'};flex-shrink:0">${i+1}</div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div><div style="font-size:10px;color:var(--muted)">${s.batch} · ${s.mo}mo</div></div><div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--red);flex-shrink:0">${dashFmt(s.due)}</div></div>`).join('')}</div></div>`:''}`;
       document.getElementById('teacherDashSub').textContent=`${bKeys.length} batch${bKeys.length!==1?'es':''} · ${grandStudents} students`;
       const dCtx=document.getElementById('tchDonutChart')?.getContext('2d');
       if(dCtx){const cd=chartDefaults();_tchDashCharts.push(new Chart(dCtx,{type:'doughnut',data:{labels:['Paid','Pending'],datasets:[{data:[grandPaid,overdueStu],backgroundColor:['#00d4aa','#ff4d6d'],borderWidth:0,hoverOffset:8}]},options:{...cd,cutout:'72%',scales:{x:{display:false},y:{display:false}},plugins:{...cd.plugins,legend:{display:false}}}}));}
@@ -7782,27 +7838,33 @@
       const dark=isDarkMode(),tc=dark?'rgba(255,255,255,.55)':'rgba(30,30,60,.6)',gc=dark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)';
       body.innerHTML=`
         <div class="dash-stat-grid">
-          <div class="dash-stat-card" style="--stat-glow:rgba(255,77,109,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><rect x="1" y="5" width="20" height="13" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><line x1="1" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="13" width="5" height="2" rx="1" fill="currentColor" opacity=".6"/><rect x="11" y="13" width="3" height="2" rx="1" fill="currentColor" opacity=".35"/></svg></div><div class="dash-stat-val" style="font-size:17px;color:${totalDue2>0?'var(--yellow)':'var(--accent3)'}">${dashFmt(totalDue2)}</div><div class="dash-stat-label">Total Outstanding</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(0,212,170,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><rect x="2" y="3" width="18" height="16" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><path d="M6 2v3M16 2v3M2 9h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="7,14 10,17 15,12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="dash-stat-val" style="font-size:17px;color:var(--accent3)">${dashFmt(paidThisMonth)}</div><div class="dash-stat-label">Paid This Month</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(124,107,255,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><rect x="1" y="5" width="20" height="13" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><line x1="1" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="6" height="2" rx="1" fill="currentColor"/></svg></div><div class="dash-stat-val" style="font-size:17px">${dashFmt(totalMonthly)}</div><div class="dash-stat-label">Monthly Expenses</div></div>
-          <div class="dash-stat-card" style="--stat-glow:rgba(255,209,102,.08)"><div class="dash-stat-icon" style="display:flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><polyline points="1,17 6,11 10,14 15,7 21,11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="1" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".4"/></svg></div><div class="dash-stat-val" style="font-size:17px">${dashFmt(avgMonthly)}</div><div class="dash-stat-label">Avg Monthly Paid</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(255,77,109,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1" y="5" width="20" height="13" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><line x1="1" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="13" width="5" height="2" rx="1" fill="currentColor" opacity=".6"/></svg></div><div class="dash-stat-val" style="font-size:20px;color:${totalDue2>0?'var(--yellow)':'var(--accent3)'}">${dashFmt(totalDue2)}</div><div class="dash-stat-label">Total Outstanding</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(0,212,170,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="3" width="18" height="16" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><path d="M6 2v3M16 2v3M2 9h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="7,14 10,17 15,12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="dash-stat-val" style="font-size:20px;color:var(--accent3)">${dashFmt(paidThisMonth)}</div><div class="dash-stat-label">Paid This Month</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(124,107,255,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1" y="5" width="20" height="13" rx="3" fill="currentColor" opacity=".1" stroke="currentColor" stroke-width="1.6"/><line x1="1" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="6" height="2" rx="1" fill="currentColor"/></svg></div><div class="dash-stat-val" style="font-size:20px">${dashFmt(totalMonthly)}</div><div class="dash-stat-label">Monthly Fees</div></div>
+          <div class="dash-stat-card" style="--stat-glow:rgba(255,209,102,.08)"><div class="dash-stat-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><polyline points="1,17 6,11 10,14 15,7 21,11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="1" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".4"/></svg></div><div class="dash-stat-val" style="font-size:20px">${dashFmt(avgMonthly)}</div><div class="dash-stat-label">Avg Monthly Paid</div></div>
         </div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Fee Status Overview</div><div class="dash-chart-sub">Teachers by count — clear vs pending</div>
-          <div style="display:flex;align-items:center;gap:16px">
-            <div class="dash-canvas-wrap" style="width:130px;height:130px;flex-shrink:0"><canvas id="stuDonutChart"></canvas></div>
-            <div style="flex:1"><div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:${clearRate>=80?'var(--accent3)':totalDue2>0?'var(--yellow)':'var(--accent3)'}">${clearRate}%</div>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:12px">fees up to date</div>
-              <div style="font-size:11px;color:var(--accent3);margin-bottom:3px"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>${clearCount} teacher${clearCount!==1?'s':''} — clear</div>
-              <div style="font-size:11px;color:var(--red)">${overdueCount} teacher${overdueCount!==1?'s':''} — pending</div>
+        <div class="dash-two-col">
+          <div>
+            <div class="dash-chart-card" style="margin-bottom:14px"><div class="dash-chart-title">Fee Status Overview</div><div class="dash-chart-sub">Teachers — clear vs pending</div>
+              <div style="display:flex;align-items:center;gap:20px;padding-top:8px">
+                <div class="dash-canvas-wrap" style="width:120px;height:120px;flex-shrink:0"><canvas id="stuDonutChart"></canvas></div>
+                <div><div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;letter-spacing:-1.5px;color:${clearRate>=80?'var(--accent3)':totalDue2>0?'var(--yellow)':'var(--accent3)'}">${clearRate}%</div>
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:10px">fees up to date</div>
+                  <div style="font-size:12px;color:var(--accent3);margin-bottom:4px">✓ ${clearCount} teacher${clearCount!==1?'s':''} — clear</div>
+                  <div style="font-size:12px;color:var(--red)">${overdueCount} pending</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-chart-card"><div class="dash-chart-title">Payment History</div><div class="dash-chart-sub">Amount paid — last 6 months</div><div class="dash-canvas-wrap" style="height:160px;margin-top:8px"><canvas id="stuLineChart"></canvas></div></div>
+          </div>
+          <div>
+            <div class="dash-chart-card" style="margin-bottom:14px"><div class="dash-chart-title">Per-Teacher Dues</div><div class="dash-chart-sub">Months outstanding</div><div class="dash-canvas-wrap" style="height:${Math.max(140,tKeys.length*44)}px;margin-top:8px"><canvas id="stuBarChart"></canvas></div></div>
+            <div class="dash-insight-card"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="9" width="4" height="7" rx="1.2" fill="currentColor" opacity=".4"/><rect x="6" y="5" width="4" height="11" rx="1.2" fill="currentColor" opacity=".68"/><rect x="11" y="1" width="4" height="15" rx="1.2" fill="currentColor"/></svg> Teacher-wise Status</div>
+              ${teacherData.map(t=>{const fc=t.dm===0?'var(--accent3)':t.cr?'var(--red)':t.ov?'var(--yellow)':'var(--accent4)';return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text)">${t.name}</span><span style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:${fc}">${dashFmt(t.da)}</span></div><div style="font-size:10px;color:var(--muted);margin-bottom:5px">${t.subject} · ${t.dm===0?'All clear':t.dm+' mo due'}</div><div class="dash-prog-bar"><div class="dash-prog-fill" style="width:${t.dm===0?100:Math.min(100,t.dm*15)}%;background:${fc}"></div></div></div>`;}).join('')}
             </div>
           </div>
         </div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Per-Teacher Dues</div><div class="dash-chart-sub">Months outstanding per teacher</div><div class="dash-canvas-wrap" style="height:${Math.max(150,tKeys.length*52)}px"><canvas id="stuBarChart"></canvas></div></div>
-        <div class="dash-chart-card"><div class="dash-chart-title">Payment History</div><div class="dash-chart-sub">Amount paid — last 6 months</div><div class="dash-canvas-wrap" style="height:160px"><canvas id="stuLineChart"></canvas></div></div>
-        <div class="dash-insight-card"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><rect x="1" y="9" width="4" height="7" rx="1.2" fill="currentColor" opacity=".4"/><rect x="6" y="5" width="4" height="11" rx="1.2" fill="currentColor" opacity=".68"/><rect x="11" y="1" width="4" height="15" rx="1.2" fill="currentColor"/><line x1="1" y1="15.5" x2="15" y2="15.5" stroke="currentColor" stroke-width="1" opacity=".3"/></svg> Teacher-wise Status</div>
-          ${teacherData.map(t=>{const fc=t.dm===0?'var(--accent3)':t.cr?'var(--red)':t.ov?'var(--yellow)':'var(--accent4)';return `<div style="margin-bottom:16px"><div class="dash-prog-header"><div class="dash-prog-label">${t.name}</div><div style="font-size:10px;color:var(--muted)">${t.subject} · ${dashFmt(t.fee)}/mo</div></div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:${t.dm===0?'var(--accent3)':t.cr?'var(--red)':'var(--yellow)'}">${t.dm===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>All clear':`${t.dm} month${t.dm>1?'s':''} due`}</span><span style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:${fc}">${dashFmt(t.da)}</span></div><div class="dash-prog-bar"><div class="dash-prog-fill" style="width:${t.dm===0?100:Math.min(100,t.dm*15)}%;background:${fc}"></div></div></div>`;}).join('')}
-        </div>
-        ${payments.length?`<div class="dash-insight-card"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><circle cx="8" cy="8" r="6.5" fill="currentColor" opacity=".08" stroke="currentColor" stroke-width="1.5"/><polyline points="8,4.5 8,8.5 11,10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Recent Payments</div>${[...payments].sort((a,b)=>b.timestamp-a.timestamp).slice(0,6).map(p=>`<div class="dash-insight-row"><div class="dash-ins-rank">${p.type==='partial'?'P':p.type==='advance'?'A':'✓'}</div><div class="dash-ins-name"><div class="dash-ins-nm">${p.teacherName||'Teacher'}</div><div class="dash-ins-sub">${p.paidOn?`${p.paidOn.day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][p.paidOn.month-1]} ${p.paidOn.year}`:'—'} · ${p.type}</div></div><div class="dash-ins-amt clear">${dashFmt(p.amount)}</div></div>`).join('')}</div>`:'' }`;
+        ${payments.length?`<div class="dash-insight-card" style="margin-top:14px"><div class="dash-insight-title" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" fill="currentColor" opacity=".08" stroke="currentColor" stroke-width="1.4"/><polyline points="8,4.5 8,8.5 11,10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Recent Payments</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${[...payments].sort((a,b)=>b.timestamp-a.timestamp).slice(0,6).map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:12px;border:1px solid var(--border)"><div style="width:28px;height:28px;border-radius:9px;background:${p.type==='partial'?'rgba(255,154,60,.15)':p.type==='advance'?'rgba(124,107,255,.15)':'rgba(0,212,170,.15)'};display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:800;color:${p.type==='partial'?'var(--accent4)':p.type==='advance'?'var(--accent)':'var(--accent3)'};flex-shrink:0">${p.type==='partial'?'P':p.type==='advance'?'A':'✓'}</div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.teacherName||'Teacher'}</div><div style="font-size:10px;color:var(--muted)">${p.paidOn?p.paidOn.day+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][p.paidOn.month-1]:'—'}</div></div><div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--accent3);flex-shrink:0">${dashFmt(p.amount)}</div></div>`).join('')}</div></div>`:''}`;
       const dCtx=document.getElementById('stuDonutChart')?.getContext('2d');
       if(dCtx){const cd=chartDefaults();_stuDashCharts.push(new Chart(dCtx,{type:'doughnut',data:{labels:['Clear','Pending'],datasets:[{data:[clearCount,overdueCount],backgroundColor:['#00d4aa','#ff4d6d'],borderWidth:0,hoverOffset:8}]},options:{...cd,cutout:'72%',scales:{x:{display:false},y:{display:false}},plugins:{...cd.plugins,legend:{display:false}}}}));}
       const bCtx=document.getElementById('stuBarChart')?.getContext('2d');
@@ -7916,6 +7978,7 @@
     window.closeTeacherDash=function(){
       destroyCharts(_tchDashCharts);
       screenFadeTo('appScreen','teacherDashScreen');
+      window.sbSetActive?.('sbHome'); sbSetPage?.('home');
     };
     window.openStudentDash=function(){
       screenFadeTo('studentDashScreen','appScreen');
@@ -7925,6 +7988,7 @@
     window.closeStudentDash=function(){
       destroyCharts(_stuDashCharts);
       screenFadeTo('appScreen','studentDashScreen');
+      window.sbSetActive?.('sbHome'); sbSetPage?.('home');
     };
 
 
@@ -8196,36 +8260,113 @@
     _syncNotifToggle();
 
     // ══════════════════════════════════════════════════════════════
-    // DESKTOP SIDEBAR — show/hide + sync user info
+    // DESKTOP SIDEBAR — full navigation, profile sheet, body-state
     // ══════════════════════════════════════════════════════════════
     (function initDesktopSidebar() {
       const sidebar = document.getElementById('desktopSidebar');
       if (!sidebar) return;
       const isDesktop = () => window.innerWidth >= 960;
       function applyLayout() {
-        sidebar.style.display = isDesktop() ? 'flex' : 'none';
+        // Only show sidebar when signed in and on desktop
+        const signedIn = !!localStorage.getItem('ft_uid');
+        const onLoginPage = document.body.classList.contains('page-login') ||
+                            document.body.classList.contains('page-onboard');
+        sidebar.style.display = (isDesktop() && signedIn && !onLoginPage) ? 'flex' : 'none';
       }
       applyLayout();
       window.addEventListener('resize', applyLayout);
+      window._sbRefreshLayout = applyLayout;
     })();
+
+    // Set body page-state classes so CSS can hide/show sidebar per page
+    function sbSetPage(page) {
+      document.body.classList.remove('page-login','page-onboard','page-home','page-analytics','page-history');
+      document.body.classList.add('page-'+page);
+      window._sbRefreshLayout?.();
+    }
 
     window.sbSetActive = function(id) {
       document.querySelectorAll('#desktopSidebar .sb-item').forEach(el => el.classList.remove('active'));
       document.getElementById(id)?.classList.add('active');
     };
 
-    window._syncSidebarUser = function(user) {
-      const av   = document.getElementById('sbUserAv');
-      const name = document.getElementById('sbUserName');
-      if (!av || !name) return;
-      const u = user || { displayName: profile.displayName, photoURL: null };
-      if (u.photoURL) {
-        av.innerHTML = `<img src="${u.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-      } else {
-        av.textContent = (u.displayName || 'U')[0].toUpperCase();
-      }
-      name.textContent = u.displayName || 'User';
+    // Nav handlers
+    window.sbGoHome = function() {
+      try { if(typeof closeBatchDetail==='function') closeBatchDetail(); } catch(e){}
+      ['batchDetailScreen','teacherDashScreen','studentDashScreen','historyScreen']
+        .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+      document.getElementById('appScreen')?.classList.remove('hidden');
+      sbSetActive('sbHome');
+      sbSetPage('home');
     };
+
+    window.sbGoAnalytics = function() {
+      if(typeof isT === 'function' && isT()) {
+        if(typeof window.openTeacherDash === 'function') window.openTeacherDash();
+      } else {
+        if(typeof window.openStudentDash === 'function') window.openStudentDash();
+      }
+      sbSetActive('sbAnalytics');
+      sbSetPage('analytics');
+    };
+
+    window.sbGoHistory = function() {
+      if(typeof window.openHistoryScreen === 'function') window.openHistoryScreen();
+      sbSetActive('sbHistory');
+      sbSetPage('history');
+    };
+
+    window.sbOpenProfile = function() {
+      if(typeof openProfileModal === 'function') openProfileModal();
+      sbSetActive('sbProfile');
+    };
+
+    // Sidebar user menu (three-dot)
+    window.sbToggleUserMenu = function() {
+      const m = document.getElementById('sbUserMenu');
+      if (!m) return;
+      const isOpen = m.style.display !== 'none';
+      m.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) {
+        // Close on outside click
+        setTimeout(() => {
+          document.addEventListener('click', function _c(){ m.style.display='none'; document.removeEventListener('click',_c); });
+        }, 10);
+      }
+    };
+    window.sbCloseSideUserMenu = function() {
+      const m = document.getElementById('sbUserMenu');
+      if (m) m.style.display = 'none';
+    };
+
+    window._syncSidebarUser = function(user) {
+      const av    = document.getElementById('sbUserAv');
+      const name  = document.getElementById('sbUserName');
+      const email = document.getElementById('sbUserEmail');
+      if (!av || !name) return;
+      const displayName = user?.displayName || profile?.displayName || 'User';
+      const photoURL    = user?.photoURL || null;
+      const emailStr    = user?.email || profile?.email || '';
+      if (photoURL) {
+        av.innerHTML = `<img src="${photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+      } else {
+        av.textContent = displayName[0].toUpperCase();
+        av.style.background = 'linear-gradient(135deg, var(--accent), #5240e0)';
+        av.style.color = '#fff';
+        av.style.display = 'flex';
+        av.style.alignItems = 'center';
+        av.style.justifyContent = 'center';
+        av.style.fontFamily = "'Syne', sans-serif";
+        av.style.fontWeight = '700';
+        av.style.fontSize = '13px';
+      }
+      name.textContent  = displayName;
+      if (email) email.textContent = emailStr;
+      window._sbRefreshLayout?.();
+    };
+
+    // Mark login/onboard page on boot
+    sbSetPage('home');
 
     // Search topbar button — focuses the search input (renders it if needed)
     document.getElementById('searchTopbarBtn')?.addEventListener('click',()=>{
@@ -8350,6 +8491,7 @@
         hs.style.opacity = '';
         hs.style.transition = '';
       }, 190);
+      window.sbSetActive?.('sbHome'); sbSetPage?.('home');
     };
 
     window._setHistFilter  = function(f){ _histFilter  = f; _renderHistory(); };
