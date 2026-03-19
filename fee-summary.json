@@ -1,0 +1,86 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "bleed": true,
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${name}",
+                  "weight": "Bolder",
+                  "size": "Small",
+                  "color": "Accent",
+                  "spacing": "None"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Total Outstanding",
+                  "size": "ExtraSmall",
+                  "color": "Light",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "${due}",
+          "weight": "Bolder",
+          "size": "ExtraLarge",
+          "color": "Attention",
+          "horizontalAlignment": "Right"
+        }
+      ]
+    },
+    {
+      "type": "ColumnSet",
+      "spacing": "Small",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "stretch",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "${label}",
+              "size": "Small",
+              "color": "Good",
+              "spacing": "None"
+            }
+          ]
+        },
+        {
+          "type": "Column",
+          "width": "auto",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "${time}",
+              "size": "ExtraSmall",
+              "color": "Light",
+              "isSubtle": true,
+              "horizontalAlignment": "Right"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "selectAction": {
+    "type": "Action.OpenUrl",
+    "url": "./"
+  }
+}

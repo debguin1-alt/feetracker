@@ -3535,7 +3535,11 @@
       <div style="flex:1;padding:0 12px;">
         <div class="topbar-title" id="splashTitle" style="opacity:.85;">Fee Tracker</div>
       </div>
-      <div class="sk" style="width:40px;height:40px;border-radius:13px;flex-shrink:0;"></div>
+      <!-- Right buttons: analytics + add (mirrors real topbar-right) -->
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <div class="sk" style="width:40px;height:40px;border-radius:14px;"></div>
+        <div class="sk" style="width:40px;height:40px;border-radius:16px;"></div>
+      </div>
     </div>
     <div class="splash-body">
       <!-- Hero / total card block -->
@@ -4494,7 +4498,39 @@
       try { localStorage.setItem(`ft__${getCacheUid()}__batches`,  JSON.stringify(batches));  } catch(e){}
       // Mirror data bundle to SW for offline HTML injection
       _swMirror();
+      // Update home screen widget with latest totals
+      _updateWidget();
     }
+
+    // Push latest summary to SW so the home-screen widget stays current
+    function _updateWidget(){
+      try {
+        const sw = navigator.serviceWorker?.controller;
+        if(!sw) return;
+        const n = new Date();
+        const due = isT()
+          ? null  // teacher: no single "total due" concept
+          : totalDue();
+        const pending = isT()
+          ? null
+          : Object.keys(teachers).filter(id=>monthsDue(id)>0).length;
+        const total = isT()
+          ? Object.keys(batches).length
+          : Object.keys(teachers).length;
+        sw.postMessage({
+          type: 'UPDATE_WIDGET',
+          data: {
+            due,
+            pending,
+            total,
+            role: profile.role||'student',
+            name: profile.displayName||'',
+            updatedAt: n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
+          }
+        });
+      } catch(e){}
+    }
+
     function saveProfileToCache(p){
       idbSet('profile', p);
       try { localStorage.setItem(`ft__${getCacheUid()}__profile`, JSON.stringify(p)); } catch(e){}
@@ -4522,10 +4558,12 @@
     }
 
     function showOfflineBanner(show){
+      // Never show the banner if the device is actually online
+      if(show && navigator.onLine) return;
       let b=document.getElementById('offlineBanner');
       if(!b){ b=document.createElement('div'); b.id='offlineBanner';
         b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(255,154,60,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#1a1009;text-align:center;font-size:11px;font-weight:700;padding:8px 16px;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:4px;transition:transform .3s cubic-bezier(.34,1.2,.64,1);transform:translateY(-100%);box-shadow:0 2px 12px rgba(0,0,0,.2);';
-        b.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="display:inline-block;vertical-align:middle;margin-right:5px;flex-shrink:0"><path d="M1 1l14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 7.4A6 6 0 0 1 13 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/><path d="M3.2 9A6 6 0 0 1 5.7 7.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/><path d="M6 11a3 3 0 0 1 4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="14" r="1.2" fill="currentColor"/></svg> Offline — cached data loaded'; b.style.cursor='default'; document.body.appendChild(b); }
+        b.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="display:inline-block;vertical-align:middle;margin-right:5px;flex-shrink:0"><path d="M1 1l14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 7.4A6 6 0 0 1 13 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/><path d="M3.2 9A6 6 0 0 1 5.7 7.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/><path d="M6 11a3 3 0 0 1 4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="14" r="1.2" fill="currentColor"/></svg> Offline — cached data'; b.style.cursor='default'; document.body.appendChild(b); }
       b.style.transform=show?'translateY(0)':'translateY(-100%)';
     }
     // ──────────────────────────────────────────────────────────────────────────
@@ -5041,7 +5079,7 @@
           payments=ps.docs.map(d=>({id:d.id,...d.data()}));
         }
         saveToCache(); showOfflineBanner(false); fetchOk=true;
-      } catch(e){ console.warn('Firestore sync failed, using cache:',e); showOfflineBanner(true); }
+      } catch(e){ console.warn('Firestore sync failed, using cache:',e); if(!navigator.onLine) showOfflineBanner(true); }
 
 
       // ── Pre-cache all batch details in background ──
@@ -5070,6 +5108,7 @@
       if(dataChanged || !appRendered){
         render();
         setTimeout(()=>window._searchPlaceholderStart?.(), 400);
+        setTimeout(()=>_updateWidget(), 200);
       }
     }
 
@@ -6420,21 +6459,14 @@
       btn.disabled=true;
       document.getElementById('avatarEl')?.classList.add('loading');
       try {
-        // Popup first (works on most browsers incl Chrome)
-        const result = await signInWithPopup(auth, provider);
-        // signInWithPopup triggers onAuthStateChanged, bootApp handles it
+        // Always use redirect — avoids browser popup/chrome overlay on mobile
+        await signInWithRedirect(auth, provider);
+        // Page will reload; getRedirectResult at top handles the result
       } catch(e) {
-        if (['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(e.code)) {
-          // Redirect fallback (Kiwi, some mobile)
-          try { await signInWithRedirect(auth, provider); }
-          catch(re) { toast('Login failed: '+re.code,'error'); btn.innerHTML='<svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google'; btn.disabled=false; }
-        } else if (e.code === 'auth/user-cancelled') {
-          btn.innerHTML='<svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google'; btn.disabled=false;
-          document.getElementById('avatarEl')?.classList.remove('loading');
-        } else {
-          toast('Login failed: '+e.code,'error');
-          btn.innerHTML='<svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google'; btn.disabled=false;
-        }
+        toast('Login failed: '+e.code,'error');
+        btn.innerHTML='<svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google';
+        btn.disabled=false;
+        document.getElementById('avatarEl')?.classList.remove('loading');
       }
     });
 
@@ -8408,7 +8440,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
-          const reg = await navigator.serviceWorker.register('sw.js?v=8');
+          const reg = await navigator.serviceWorker.register('sw.js?v=9');
           console.log('[App] SW registered:', reg.scope);
 
           // ── Listen for messages from the SW ──────────────────────────────
