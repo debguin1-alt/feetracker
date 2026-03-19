@@ -6690,7 +6690,7 @@
         toast('Back online — syncing…', '');
         await loadAll(true);
       }, { once: true });
-    }, 250);  // fast — must beat onAuthStateChanged(null) which fires ~300-500ms offline
+    }, 800);  // reduced — SW hydration provides instant data fallback
 
     // ── Secondary offline fallback for previously-signed-in users ────────────
     // If the 800ms boot didn't fire (no cached profile yet) but we have a uid,
@@ -6742,14 +6742,7 @@
       hideSplash();
       document.getElementById('appScreen').classList.remove('hidden');
       showOfflineBanner(true);
-      // Queue a sync when connection restores (same as primary offline boot)
-      window.addEventListener('online', async () => {
-        if (!loaded) return;
-        showOfflineBanner(false);
-        toast('Back online — syncing…', '');
-        await loadAll(true);
-      }, { once: true });
-    }, 800);
+    }, 2500);
     // Fallback: if auth hasn't resolved in 4s AND no cached UID exists, show login.
     // If a cached UID exists the user was previously signed in — keep showing the
     // splash/skeleton so the offline-boot path can take over instead of flashing login.
@@ -6774,15 +6767,7 @@
       if (user) {
         if (!loaded) await bootApp(user);
       } else {
-        // ── Offline guard ───────────────────────────────────────────────────
-        // Firebase fires user=null when it can't reach its servers (offline).
-        // If we have a cached UID, the user hasn't actually signed out —
-        // they're just offline. Don't clear state or show login; let the
-        // offline-boot timers below handle rendering from cache instead.
-        const cachedUidOnNull = localStorage.getItem('ft_uid');
-        if (cachedUidOnNull && (!navigator.onLine || _offlineBooted)) return;
-        // ────────────────────────────────────────────────────────────────────
-        cu=null; loaded=false; profile={}; appRendered=false; teachers={}; batches={};
+        cu=null; loaded=false; profile={}; appRendered=false; teachers={}; payments=[]; batches={};
         try { localStorage.removeItem('ft_uid'); } catch(e){}
         hideSplash();
         document.getElementById('onboardScreen').classList.add('hidden');
@@ -6790,6 +6775,7 @@
         document.getElementById('loginScreen').classList.remove('hidden');
         sbSetPage?.('login');
         window._sbRefreshLayout?.();
+        // Hide login skeleton once real UI shows
         // Fade out login skeleton smoothly
         const ls=document.getElementById('loginSkeleton');
         const lc=document.getElementById('loginContent');
@@ -7211,6 +7197,7 @@
         '#appInner .teacher-card[data-id],' +
         '#appInner .batch-card[data-id],' +
         '#appInner .standalone-card[data-id],' +
+        '#appInner .student-card[data-id],' +
         '#bdBody .student-card[data-id]'
       );
     }
@@ -7260,10 +7247,12 @@
     }
 
     function _applySelState(id, selected){
-      const card = document.querySelector(
-        `[data-id="${id}"].teacher-card,[data-id="${id}"].batch-card,` +
-        `[data-id="${id}"].student-card,[data-id="${id}"].standalone-card`
-      );
+      const card =
+        document.querySelector(`#appInner [data-id="${id}"].teacher-card`) ||
+        document.querySelector(`#appInner [data-id="${id}"].batch-card`) ||
+        document.querySelector(`#appInner [data-id="${id}"].standalone-card`) ||
+        document.querySelector(`#appInner [data-id="${id}"].student-card`) ||
+        document.querySelector(`#bdBody [data-id="${id}"].student-card`);
       if(!card) return;
       card.classList.toggle('selected', selected);
       const circle = card.querySelector('.sel-circle');
