@@ -5611,10 +5611,9 @@
       document.getElementById('addTeacherFields').classList.remove('hidden');
       document.getElementById('addModalTitle').textContent = 'Add Batch';
       ['b-name','b-subject','b-class','b-session','b-fee','b-timing'].forEach(i=>{ const e=document.getElementById(i); if(e) e.value=''; });
-      const cb = document.getElementById('confirmAddBtn');
-      if (cb) { cb.disabled = false; cb.textContent = 'Add'; }
+      const cb=document.getElementById('confirmAddBtn'); if(cb){cb.disabled=false;cb.textContent='Add';}
       openModal('addModal');
-      setTimeout(() => document.getElementById('b-name')?.focus(), 250);
+      setTimeout(()=>document.getElementById('b-name')?.focus(),250);
     }
     function closeAddModal(){
       closeModal('addModal');
@@ -5635,7 +5634,7 @@
         if(!nm||!sb||!fe) return toast('Batch name, subject & fee required','error');
         const bref=await addDoc(btCol(),{name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()});
         batches[bref.id]={name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()}; saveToCache();
-        closeAddModal(); toast(`${nm} added ✓`,'success');
+        closeAddModal(); render(); toast(`${nm} added ✓`,'success');
       } else {
         const nm=document.getElementById('f-name').value.trim();
         const sb=document.getElementById('f-subject').value.trim();
@@ -6665,7 +6664,6 @@
 
     async function bootApp(user) {
       if (loaded) return;
-      // Real Firebase auth — clear any stale offline state
       _reconnecting  = false;
       _offlineBooted = false;
       showOfflineBanner(false);
@@ -6778,9 +6776,9 @@
     }
 
     // ── Primary offline boot — 200ms ──────────────────────────────────────
-    // ONLY runs when offline. Online = Firebase handles it, skip entirely.
+    // ONLY runs offline. Online = Firebase handles boot directly.
     setTimeout(async () => {
-      if (navigator.onLine) return;          // online: let Firebase handle boot
+      if (navigator.onLine) return;
       if (loaded || _offlineBooted) return;
       if (!_cachedUidSnapshot) return;
       const cachedProfile = await idbGet('profile').catch(()=>null) || LS.get('profile');
@@ -6789,9 +6787,9 @@
     }, 150);
 
     // ── Secondary offline boot — 1400ms ───────────────────────────────────
-    // ONLY runs when offline. Catches slow IDB reads.
+    // ONLY runs offline.
     setTimeout(async () => {
-      if (navigator.onLine) return;          // online: skip
+      if (navigator.onLine) return;
       if (loaded || _offlineBooted) return;
       if (!_cachedUidSnapshot) return;
       const cachedProfile = await idbGet('profile').catch(()=>null) || LS.get('profile');
@@ -7560,11 +7558,18 @@
           toast(`${nm} added to ${batches[bid].name} ✓`,'success');
         } else {
           // Save to standalone students collection
-          await addDoc(collection(db,'users',uid(),'students'),sd);
+          const _newRef = await addDoc(collection(db,'users',uid(),'students'),sd);
+          // Push locally so card appears immediately without reload
+          _standaloneStudents.push({id:_newRef.id,...sd});
+          idbSet('standalone_students',_standaloneStudents);
           toast(`${nm} added ✓`,'success');
         }
         document.getElementById('addStandaloneStudentModal').classList.add('hidden');
-        if(bid) await loadBatchDetail(bid);
+        if(bid) {
+          await loadBatchDetail(bid);
+        } else {
+          _renderStandaloneSection();
+        }
       }catch(e){ toast('Error: '+e.message,'error'); }
       btn.disabled=false; btn.textContent='Add Student';
     });
@@ -8644,7 +8649,7 @@
         );
       }
 
-      // Type filter removed — always show all payments
+      // ── Type filter ────────────────────────────────────────
       const shown = batchFiltered;
       shown.sort((a,b) => b.timestamp - a.timestamp);
 
