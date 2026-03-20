@@ -6091,7 +6091,7 @@
         if(cached){
           batchStudents = cached.students || {};
           batchPayments = cached.payments || [];
-          showOfflineBanner(true);
+          if (!navigator.onLine) showOfflineBanner(true);
         } else {
           batchStudents = {}; batchPayments = [];
           toast('No cached data for this batch', 'error');
