@@ -5624,6 +5624,15 @@
       document.getElementById('addModalTitle').textContent = 'Add Batch';
       ['b-name','b-subject','b-class','b-session','b-fee','b-timing'].forEach(i=>{ const e=document.getElementById(i); if(e) e.value=''; });
       const cb=document.getElementById('confirmAddBtn'); if(cb){cb.disabled=false;cb.textContent='Add';}
+      // ─ Sanity check: verify Firestore access is working ─────────────────────────────────────
+      try {
+        if(!cu || !cu.uid) throw new Error('Not signed in — cu.uid is null');
+        console.log('[openAddBatchModal] uid='+cu.uid+', role='+profile.role+', isT='+isT());
+      } catch(e) {
+        console.error('[openAddBatchModal] pre-check failed:', e);
+        toast('Auth error: '+e.message,'error');
+        return;
+      }
       openModal('addModal');
       setTimeout(()=>document.getElementById('b-name')?.focus(),250);
     }
@@ -5640,37 +5649,74 @@
       if(btn){btn.disabled=true;btn.textContent='Saving…';}
       try{
         if(isT()){
-          const nm=document.getElementById('b-name').value.trim();
-          const sb=document.getElementById('b-subject').value.trim();
-          const cl=document.getElementById('b-class').value.trim();
-          const ss=document.getElementById('b-session').value.trim();
-          const fe=parseInt(document.getElementById('b-fee').value)||0;
-          const ti=document.getElementById('b-timing').value.trim();
+          // ── TEACHER: Add Batch ───────────────────────────────────────────────
+          const nm=(document.getElementById('b-name')?.value||'').trim();
+          const sb=(document.getElementById('b-subject')?.value||'').trim();
+          const cl=(document.getElementById('b-class')?.value||'').trim();
+          const ss=(document.getElementById('b-session')?.value||'').trim();
+          const fe=parseInt(document.getElementById('b-fee')?.value||'0')||0;
+          const ti=(document.getElementById('b-timing')?.value||'').trim();
           if(!nm){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Batch name is required','error'); }
           if(!sb){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Subject is required','error'); }
           if(!fe){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Monthly fee is required','error'); }
-          const bref=await addDoc(btCol(),{name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()});
-          batches[bref.id]={name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()}; saveToCache();
-          closeAddModal(); render(); toast(`${nm} added ✓`,'success');
+          const payload={name:nm,subject:sb,fee:fe,createdAt:Date.now()};
+          if(cl) payload.class=cl;
+          if(ss) payload.session=ss;
+          if(ti) payload.timing=ti;
+          // ─ Optimistic update: show batch immediately before Firestore confirms ─
+          const tempId='temp_'+Date.now();
+          batches[tempId]={...payload};
+          closeAddModal();
+          render();
+          try{
+            const bref=await addDoc(btCol(), payload);
+            // Replace temp entry with real Firestore id
+            delete batches[tempId];
+            batches[bref.id]={...payload};
+            saveToCache();
+            render();
+            toast(`${nm} added ✓`,'success');
+          }catch(fsErr){
+            // Firestore failed ─ remove temp entry, show specific error
+            delete batches[tempId];
+            render();
+            console.error('[confirmAdd] Firestore error:', fsErr);
+            const msg=fsErr.code==='permission-denied'?'Permission denied — check Firestore rules & App Check':fsErr.message;
+            toast('Save failed: '+msg,'error');
+            // Re-open modal with data so user doesn’t lose their input
+            document.getElementById('addStudentFields').classList.add('hidden');
+            document.getElementById('addTeacherFields').classList.remove('hidden');
+            document.getElementById('addModalTitle').textContent='Add Batch';
+            if(document.getElementById('b-name')) document.getElementById('b-name').value=nm;
+            if(document.getElementById('b-subject')) document.getElementById('b-subject').value=sb;
+            if(document.getElementById('b-fee')) document.getElementById('b-fee').value=fe;
+            if(cl && document.getElementById('b-class')) document.getElementById('b-class').value=cl;
+            if(ss && document.getElementById('b-session')) document.getElementById('b-session').value=ss;
+            if(ti && document.getElementById('b-timing')) document.getElementById('b-timing').value=ti;
+            openModal('addModal');
+          }
         } else {
-          const nm=document.getElementById('f-name').value.trim();
-          const sb=document.getElementById('f-subject').value.trim();
-          const fe=parseInt(document.getElementById('f-fee').value)||0;
+          // ── STUDENT: Add Teacher ─────────────────────────────────────────────
+          const nm=(document.getElementById('f-name')?.value||'').trim();
+          const sb=(document.getElementById('f-subject')?.value||'').trim();
+          const fe=parseInt(document.getElementById('f-fee')?.value||'0')||0;
           if(!nm){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Teacher name is required','error'); }
           if(!sb){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Subject is required','error'); }
           if(!fe){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Monthly fee is required','error'); }
-          const dv=document.getElementById('f-lastpaid').value;
+          const dv=document.getElementById('f-lastpaid')?.value||'';
           const now2=new Date();
           const mo=dv?parseInt(dv.split('-')[1]):now2.getMonth()+1;
           const yr=dv?parseInt(dv.split('-')[0]):now2.getFullYear();
           const tref=await addDoc(tcCol(),{name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null});
-          teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null}; saveToCache();
-          closeAddModal(); toast(`${nm} added ✓`,'success');
+          teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null};
+          saveToCache();
+          closeAddModal();
+          render();
+          toast(`${nm} added ✓`,'success');
         }
-        render();
       }catch(err){
+        console.error('[confirmAdd] ERROR:', err);
         toast('Save failed: '+err.message,'error');
-        console.error('[confirmAdd]',err);
       }finally{
         if(btn){btn.disabled=false;btn.textContent='Add';}
       }
