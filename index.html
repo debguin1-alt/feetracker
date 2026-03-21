@@ -5616,7 +5616,7 @@
         _di.value=`${_p.getFullYear()}-${String(_p.getMonth()+1).padStart(2,'0')}-01`;}
       openModal('addModal');
     }
-    function openAddBatchModal(){
+    window.openAddBatchModal = function openAddBatchModal(){
       document.getElementById('teacherAddChoiceSheet').classList.add('hidden');
       // Force correct panels regardless of prior modal state
       document.getElementById('addStudentFields').classList.add('hidden');
