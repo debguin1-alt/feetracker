@@ -13,7 +13,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fee Tracker">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <script src="https://www.google.com/recaptcha/api.js?render=6LfvBpIsAAAAAGwH54i-DnUY-UXEVqOnSFj944ex"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -4678,7 +4677,7 @@
     import { getMessaging, getToken, onMessage }
       from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
     import { initializeAppCheck, ReCaptchaV3Provider }
-  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
 
     
     // ── SW hydration: data injected by service worker into the page ──────────
@@ -4713,11 +4712,15 @@
     const cfg = { apiKey:"AIzaSyDlpLbd5g78eHv_elhiiLRlOdhPMvn9ijA", authDomain:"fee-tracker-f32f8.firebaseapp.com", projectId:"fee-tracker-f32f8", storageBucket:"fee-tracker-f32f8.firebasestorage.app", messagingSenderId:"1061066310105", appId:"1:1061066310105:web:4ca8c0feaa9d6614cd19c8" };
     const _app = initializeApp(cfg);
 
-// ── Firebase App Check (reCAPTCHA v3) ──
-const appCheck = initializeAppCheck(_app, {
-  provider: new ReCaptchaV3Provider('6LfvBpIsAAAAAGwH54i-DnUY-UXEVqOnSFj944ex'),
-  isTokenAutoRefreshEnabled: true
-});
+    // ── Firebase App Check (reCAPTCHA v3) ─────────────────────────────────────
+    // Protects Firestore + Auth from unauthorized API access.
+    try {
+      initializeAppCheck(_app, {
+        provider: new ReCaptchaV3Provider('6LfvBpIsAAAAAGwH54i-DnUY-UXEVqOnSFj944ex'),
+        isTokenAutoRefreshEnabled: true
+      });
+    } catch(e) { console.warn('[AppCheck] init failed:', e); }
+
     const db   = getFirestore(_app);
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
@@ -5633,31 +5636,44 @@ const appCheck = initializeAppCheck(_app, {
       document.getElementById('addTeacherFields')?.classList.add('hidden');
     }
     async function confirmAdd(){
-      if(isT()){
-        const nm=document.getElementById('b-name').value.trim();
-        const sb=document.getElementById('b-subject').value.trim();
-        const cl=document.getElementById('b-class').value.trim();
-        const ss=document.getElementById('b-session').value.trim();
-        const fe=parseInt(document.getElementById('b-fee').value);
-        const ti=document.getElementById('b-timing').value.trim();
-        if(!nm||!sb||!fe) return toast('Batch name, subject & fee required','error');
-        const bref=await addDoc(btCol(),{name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()});
-        batches[bref.id]={name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()}; saveToCache();
-        closeAddModal(); render(); toast(`${nm} added ✓`,'success');
-      } else {
-        const nm=document.getElementById('f-name').value.trim();
-        const sb=document.getElementById('f-subject').value.trim();
-        const fe=parseInt(document.getElementById('f-fee').value);
-        if(!nm||!sb||!fe) return toast('Fill name, subject and fee','error');
-        const dv=document.getElementById('f-lastpaid').value;
-        const now2=new Date();
-        const mo=dv?parseInt(dv.split('-')[1]):now2.getMonth()+1;
-        const yr=dv?parseInt(dv.split('-')[0]):now2.getFullYear();
-        const tref=await addDoc(tcCol(),{name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null});
-        teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null}; saveToCache();
-        closeAddModal(); toast(`${nm} added ✓`,'success');
+      const btn=document.getElementById('confirmAddBtn');
+      if(btn){btn.disabled=true;btn.textContent='Saving…';}
+      try{
+        if(isT()){
+          const nm=document.getElementById('b-name').value.trim();
+          const sb=document.getElementById('b-subject').value.trim();
+          const cl=document.getElementById('b-class').value.trim();
+          const ss=document.getElementById('b-session').value.trim();
+          const fe=parseInt(document.getElementById('b-fee').value)||0;
+          const ti=document.getElementById('b-timing').value.trim();
+          if(!nm){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Batch name is required','error'); }
+          if(!sb){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Subject is required','error'); }
+          if(!fe){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Monthly fee is required','error'); }
+          const bref=await addDoc(btCol(),{name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()});
+          batches[bref.id]={name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()}; saveToCache();
+          closeAddModal(); render(); toast(`${nm} added ✓`,'success');
+        } else {
+          const nm=document.getElementById('f-name').value.trim();
+          const sb=document.getElementById('f-subject').value.trim();
+          const fe=parseInt(document.getElementById('f-fee').value)||0;
+          if(!nm){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Teacher name is required','error'); }
+          if(!sb){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Subject is required','error'); }
+          if(!fe){ if(btn){btn.disabled=false;btn.textContent='Add';} return toast('Monthly fee is required','error'); }
+          const dv=document.getElementById('f-lastpaid').value;
+          const now2=new Date();
+          const mo=dv?parseInt(dv.split('-')[1]):now2.getMonth()+1;
+          const yr=dv?parseInt(dv.split('-')[0]):now2.getFullYear();
+          const tref=await addDoc(tcCol(),{name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null});
+          teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null}; saveToCache();
+          closeAddModal(); toast(`${nm} added ✓`,'success');
+        }
+        render();
+      }catch(err){
+        toast('Save failed: '+err.message,'error');
+        console.error('[confirmAdd]',err);
+      }finally{
+        if(btn){btn.disabled=false;btn.textContent='Add';}
       }
-      render();
     }
 
     window.toggleHistory=function(id){
@@ -6404,7 +6420,7 @@ const appCheck = initializeAppCheck(_app, {
             onclick="if(selMode&&selContext==='batch'){selTap('${bid}');return;}openBatchDetail('${bid}')">
 
             <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ₹${b.fee}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
-            <div class="batch-subject-list">${b.subject.split(',').map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
+            <div class="batch-subject-list">${(b.subject||'').split(',').filter(s=>s.trim()).map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
             ${selMode&&selContext==='batch'?'':`<div class="batch-actions">
               <button class="batch-open-btn" onclick="event.stopPropagation();openBatchDetail('${bid}')" style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M11 13v-1a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 13v-1a3 3 0 0 0-2-2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> View students ›</button>
               <button class="batch-del-btn" onclick="event.stopPropagation();deleteBatch('${bid}')" style="display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="display:block"><path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -6785,7 +6801,7 @@ const appCheck = initializeAppCheck(_app, {
     }
 
     // ── Primary offline boot — 200ms ──────────────────────────────────────
-    // ONLY runs when offline. Online = Firebase handles auth directly.
+    // ONLY runs offline. Online = Firebase handles boot directly.
     setTimeout(async () => {
       if (navigator.onLine) return;
       if (loaded || _offlineBooted) return;
@@ -6796,7 +6812,7 @@ const appCheck = initializeAppCheck(_app, {
     }, 150);
 
     // ── Secondary offline boot — 1400ms ───────────────────────────────────
-    // ONLY runs when offline.
+    // ONLY runs offline.
     setTimeout(async () => {
       if (navigator.onLine) return;
       if (loaded || _offlineBooted) return;
@@ -7539,6 +7555,7 @@ const appCheck = initializeAppCheck(_app, {
       });
       ['ssNameInp','ssFeeInp'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
       ['ssDateInp','ssPayDateInp'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
+      const _bsel=document.getElementById('ssBatchSel');if(_bsel)_bsel.value='';
       document.getElementById('addStandaloneStudentModal').classList.remove('hidden');
       setTimeout(()=>document.getElementById('ssNameInp')?.focus(),200);
     }
@@ -7567,8 +7584,9 @@ const appCheck = initializeAppCheck(_app, {
           toast(`${nm} added to ${batches[bid].name} ✓`,'success');
         } else {
           // Save to standalone students collection
-          const _ssRef = await addDoc(collection(db,'users',uid(),'students'),sd);
-          _standaloneStudents.push({id:_ssRef.id,...sd});
+          const _newRef = await addDoc(collection(db,'users',uid(),'students'),sd);
+          // Push locally so card appears immediately without reload
+          _standaloneStudents.push({id:_newRef.id,...sd});
           idbSet('standalone_students',_standaloneStudents);
           toast(`${nm} added ✓`,'success');
         }
@@ -7684,7 +7702,7 @@ const appCheck = initializeAppCheck(_app, {
         h+=`<div class="batch-card" data-id="${bid}" style="animation-delay:${dl}s"
           onclick="if(selMode){event.stopPropagation();selTap('${bid}');return;}openBatchDetail('${bid}')" ontouchstart="void 0">
           <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ₹${b.fee}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
-          <div class="batch-subject-list">${b.subject.split(',').map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
+          <div class="batch-subject-list">${(b.subject||'').split(',').filter(s=>s.trim()).map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
           ${selMode?'':`<div class="batch-actions">
             <button class="batch-open-btn" onclick="event.stopPropagation();openBatchDetail('${bid}')" style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M11 13v-1a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 13v-1a3 3 0 0 0-2-2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> View students ›</button>
             <button class="batch-del-btn" onclick="event.stopPropagation();deleteBatch('${bid}')"><svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;flex-shrink:0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
