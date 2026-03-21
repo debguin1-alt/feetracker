@@ -5663,38 +5663,31 @@
           if(cl) payload.class=cl;
           if(ss) payload.session=ss;
           if(ti) payload.timing=ti;
-          // ─ Optimistic update: show batch immediately before Firestore confirms ─
-          const tempId='temp_'+Date.now();
+
+          // ── Step 1: Instantly show locally — never wait on Firestore for UI update ──
+          const tempId='local_batch_'+Date.now();
           batches[tempId]={...payload};
+          saveToCache();       // write to IDB/LS immediately
           closeAddModal();
-          render();
-          try{
-            const bref=await addDoc(btCol(), payload);
-            // Replace temp entry with real Firestore id
+          render();            // batch appears in list RIGHT NOW
+          toast(`${nm} added ✓`,'success');
+
+          // ── Step 2: Sync to Firestore in background (non-blocking) ─────────────
+          addDoc(btCol(), payload).then(bref => {
+            // Swap temp key for real Firestore id
             delete batches[tempId];
             batches[bref.id]={...payload};
             saveToCache();
-            render();
-            toast(`${nm} added ✓`,'success');
-          }catch(fsErr){
-            // Firestore failed ─ remove temp entry, show specific error
-            delete batches[tempId];
-            render();
-            console.error('[confirmAdd] Firestore error:', fsErr);
-            const msg=fsErr.code==='permission-denied'?'Permission denied — check Firestore rules & App Check':fsErr.message;
-            toast('Save failed: '+msg,'error');
-            // Re-open modal with data so user doesn’t lose their input
-            document.getElementById('addStudentFields').classList.add('hidden');
-            document.getElementById('addTeacherFields').classList.remove('hidden');
-            document.getElementById('addModalTitle').textContent='Add Batch';
-            if(document.getElementById('b-name')) document.getElementById('b-name').value=nm;
-            if(document.getElementById('b-subject')) document.getElementById('b-subject').value=sb;
-            if(document.getElementById('b-fee')) document.getElementById('b-fee').value=fe;
-            if(cl && document.getElementById('b-class')) document.getElementById('b-class').value=cl;
-            if(ss && document.getElementById('b-session')) document.getElementById('b-session').value=ss;
-            if(ti && document.getElementById('b-timing')) document.getElementById('b-timing').value=ti;
-            openModal('addModal');
-          }
+            // No re-render here — data is same, just key changed
+            console.log('[batch saved to Firestore] id='+bref.id);
+          }).catch(fsErr => {
+            console.error('[batch Firestore sync failed]', fsErr.code, fsErr.message);
+            // Batch stays local until next reload — Firestore offline persistence
+            // will retry automatically when connection is restored.
+            if(fsErr.code==='permission-denied'){
+              toast('Firestore permission denied — check your security rules','error');
+            }
+          });
         } else {
           // ── STUDENT: Add Teacher ─────────────────────────────────────────────
           const nm=(document.getElementById('f-name')?.value||'').trim();
