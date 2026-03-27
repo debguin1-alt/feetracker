@@ -118,7 +118,25 @@
     .conn-badge{font-size:10px;font-weight:700;border-radius:6px;padding:3px 7px;background:rgba(0,212,170,.12);color:var(--accent3);border:1px solid rgba(0,212,170,.25);margin-left:auto;flex-shrink:0;}
     .conn-badge.pending{background:rgba(255,154,60,.12);color:var(--accent4);border-color:rgba(255,154,60,.25);}
 
-    /* ── SETUP CARD (teacher no profile) ── */
+    /* ── CLASS PILLS (teacher profile card) ── */
+    .profile-classes{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+    .profile-class-pill{background:var(--accent-dim);border:1px solid rgba(124,107,255,.22);border-radius:20px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--accent);}
+
+    /* ── CUSTOM BATCH INPUT ── */
+    .batch-add-row{display:flex;gap:7px;margin-bottom:10px;}
+    .batch-add-input{flex:1;background:var(--surface2);border:1.5px solid var(--border);border-radius:11px;padding:9px 12px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;}
+    .batch-add-input:focus{border-color:rgba(124,107,255,.4);}
+    .batch-add-input::placeholder{color:var(--muted);}
+    .batch-add-btn{background:var(--accent-dim);border:1.5px solid rgba(124,107,255,.3);border-radius:11px;padding:9px 14px;font-size:13px;font-weight:700;color:var(--accent);cursor:pointer;flex-shrink:0;transition:all .15s;}
+    .batch-add-btn:active{background:rgba(124,107,255,.2);}
+    .chip.removable{padding-right:7px;display:inline-flex;align-items:center;gap:5px;}
+    .chip-remove{font-size:13px;line-height:1;opacity:.6;cursor:pointer;}
+    .chip-remove:hover{opacity:1;}
+
+    /* ── EMPTY HINT (student no teachers found) ── */
+    .empty-hint{font-size:12px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(124,107,255,.2);border-radius:12px;padding:10px 14px;margin-top:10px;line-height:1.6;text-align:center;}
+
+    /* ── SETUP CARD ── */
     .setup-card{background:linear-gradient(135deg,rgba(124,107,255,.13),rgba(0,212,170,.07));border:1.5px solid rgba(124,107,255,.2);border-radius:22px;padding:24px;text-align:center;margin-bottom:16px;}
     .setup-icon{font-size:40px;margin-bottom:12px;}
     .setup-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;}
@@ -279,16 +297,21 @@
     <input class="field-input" id="setupName" placeholder="e.g. Mr. Roy"/>
     <label class="field-label">Subjects You Teach</label>
     <input class="field-input" id="setupSubject" placeholder="e.g. Mathematics, Physics"/>
-    <label class="field-label">Classes You Teach</label>
+    <label class="field-label">Batches / Classes</label>
+    <div class="batch-add-row">
+      <input class="batch-add-input" id="batchInput" placeholder="Type a batch and press +" maxlength="30"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomBatch();}"/>
+      <button class="batch-add-btn" onclick="addCustomBatch()">+</button>
+    </div>
     <div class="chip-row" id="setupClassChips">
-      <div class="chip" data-val="Cls 9" onclick="toggleSetupChip(this)">Cls 9</div>
+      <div class="chip" data-val="Cls 9"  onclick="toggleSetupChip(this)">Cls 9</div>
       <div class="chip" data-val="Cls 10" onclick="toggleSetupChip(this)">Cls 10</div>
       <div class="chip" data-val="Cls 11" onclick="toggleSetupChip(this)">Cls 11</div>
       <div class="chip" data-val="Cls 12" onclick="toggleSetupChip(this)">Cls 12</div>
       <div class="chip" data-val="1st Yr" onclick="toggleSetupChip(this)">1st Yr</div>
       <div class="chip" data-val="2nd Yr" onclick="toggleSetupChip(this)">2nd Yr</div>
       <div class="chip" data-val="3rd Yr" onclick="toggleSetupChip(this)">3rd Yr</div>
-      <div class="chip" data-val="Grad" onclick="toggleSetupChip(this)">Grad</div>
+      <div class="chip" data-val="Grad"   onclick="toggleSetupChip(this)">Grad</div>
     </div>
     <label class="field-label">Monthly Fee (₹)</label>
     <input class="field-input" id="setupFee" type="number" placeholder="e.g. 800"/>
@@ -447,7 +470,21 @@
       return (t.name||'').toLowerCase().includes(q) || (t.subject||'').toLowerCase().includes(q);
     });
     if(!filtered.length){
-      setHTML('teacherListWrap', `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-txt">${q?'No teacher found for "'+q+'"':'No teachers yet'}</div></div>`);
+      if(q){
+        setHTML('teacherListWrap', `
+          <div class="empty">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-txt">No teacher found for "<strong>${q}</strong>"</div>
+            <div class="empty-hint">💬 Ask your teacher to create a public profile on Fee Tracker so you can find and connect with them here.</div>
+          </div>`);
+      } else {
+        setHTML('teacherListWrap', `
+          <div class="empty">
+            <div class="empty-icon">👩‍🏫</div>
+            <div class="empty-txt">No teachers have a public profile yet.</div>
+            <div class="empty-hint">💬 Ask your teacher to open Fee Tracker → Connect → and create their public profile so you can find them here.</div>
+          </div>`);
+      }
       return;
     }
     const connMap = {};
@@ -557,12 +594,14 @@
     const col = avatarColor(p.name||'T');
     const ini = initials(p.name||'T');
     const url = `${location.origin}${location.pathname}?join=${cu.uid}`;
+    const classPills = (p.classes||[]).map(c=>`<span class="profile-class-pill">${c}</span>`).join('');
     document.getElementById('teacherProfileCard').innerHTML = `
       <div class="profile-card-top">
-        <div class="profile-big-avatar" style="background:linear-gradient(135deg,${col},${col}cc);">${ini}</div>
-        <div>
+        <div class="profile-big-avatar" style="background:linear-gradient(135deg,${col},${col}cc);flex-shrink:0;">${ini}</div>
+        <div style="flex:1;min-width:0;">
           <div class="profile-card-name">${p.name||'—'}</div>
-          <div class="profile-card-sub">${[p.subject, p.classes?.join(', ')].filter(Boolean).join(' · ')}</div>
+          <div class="profile-card-sub">${p.subject||''}</div>
+          ${classPills ? `<div class="profile-classes" style="margin-top:6px;">${classPills}</div>` : ''}
         </div>
       </div>
       <div class="profile-stat-row">
@@ -588,10 +627,9 @@
         <button class="copy-btn" onclick="copyLink()">Copy</button>
       </div>
       <div style="margin-top:12px;">
-        <button onclick="openProfileSetup(true)" style="background:transparent;border:1px solid var(--border2);border-radius:10px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;width:100%;">Edit Profile</button>
+        <button onclick="openProfileSetup(true)" style="background:transparent;border:1px solid var(--border2);border-radius:10px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;width:100%;">✏️ Edit Profile</button>
       </div>
     `;
-    // Load code
     loadOrGenCode();
   }
 
@@ -712,8 +750,33 @@
 
   // ── Profile setup (create / edit) ──
   let _editMode = false;
+  // Preset chip values (built into HTML)
+  const PRESET_CHIPS = ['Cls 9','Cls 10','Cls 11','Cls 12','1st Yr','2nd Yr','3rd Yr','Grad'];
+
+  window.addCustomBatch = function(){
+    const input = document.getElementById('batchInput');
+    const val = (input.value||'').trim();
+    if(!val) return;
+    // Avoid duplicates
+    const existing = [...document.querySelectorAll('#setupClassChips .chip')].map(c=>c.dataset.val);
+    if(existing.includes(val)){ toast('Batch already added',''); input.value=''; return; }
+    const chip = document.createElement('div');
+    chip.className = 'chip selected removable';
+    chip.dataset.val = val;
+    chip.innerHTML = `${val}<span class="chip-remove" onclick="this.parentElement.remove()">×</span>`;
+    chip.onclick = function(e){ if(e.target.classList.contains('chip-remove')) return; chip.classList.toggle('selected'); };
+    document.getElementById('setupClassChips').appendChild(chip);
+    input.value = '';
+    input.focus();
+  };
+
   window.openProfileSetup = async function(edit=false){
     _editMode = edit;
+    // Clear any previously added custom chips (keep only presets)
+    document.querySelectorAll('#setupClassChips .chip.removable').forEach(c=>c.remove());
+    // Reset preset selection
+    document.querySelectorAll('#setupClassChips .chip').forEach(ch=>ch.classList.remove('selected'));
+
     if(edit){
       try {
         const snap = await getDoc(profileDoc(cu.uid));
@@ -723,12 +786,29 @@
           document.getElementById('setupSubject').value = p.subject||'';
           document.getElementById('setupFee').value = p.fee||'';
           document.getElementById('setupSession').value = p.session||'';
+          const saved = p.classes||[];
+          // Mark presets
           document.querySelectorAll('#setupClassChips .chip').forEach(ch=>{
-            ch.classList.toggle('selected', (p.classes||[]).includes(ch.dataset.val));
+            ch.classList.toggle('selected', saved.includes(ch.dataset.val));
+          });
+          // Re-add custom batches
+          saved.filter(c=>!PRESET_CHIPS.includes(c)).forEach(val=>{
+            const chip = document.createElement('div');
+            chip.className = 'chip selected removable';
+            chip.dataset.val = val;
+            chip.innerHTML = `${val}<span class="chip-remove" onclick="this.parentElement.remove()">×</span>`;
+            chip.onclick = function(e){ if(e.target.classList.contains('chip-remove')) return; chip.classList.toggle('selected'); };
+            document.getElementById('setupClassChips').appendChild(chip);
           });
         }
       } catch(e){}
+    } else {
+      document.getElementById('setupName').value = '';
+      document.getElementById('setupSubject').value = '';
+      document.getElementById('setupFee').value = '';
+      document.getElementById('setupSession').value = '';
     }
+    document.getElementById('batchInput').value = '';
     document.getElementById('profileSetupModal').classList.remove('hidden');
   };
 
