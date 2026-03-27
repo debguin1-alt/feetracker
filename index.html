@@ -4728,28 +4728,68 @@
       }
     })();
 
-    const cfg = { apiKey:"AIzaSyDlpLbd5g78eHv_elhiiLRlOdhPMvn9ijA", authDomain:"fee-tracker-f32f8.firebaseapp.com", projectId:"fee-tracker-f32f8", storageBucket:"fee-tracker-f32f8.firebasestorage.app", messagingSenderId:"1061066310105", appId:"1:1061066310105:web:4ca8c0feaa9d6614cd19c8" };
-    const _app = initializeApp(cfg);
+    // ── PROJECT 1 (primary — your existing project) ──────────────────────────
+    const cfg1 = { apiKey:"AIzaSyDlpLbd5g78eHv_elhiiLRlOdhPMvn9ijA", authDomain:"fee-tracker-f32f8.firebaseapp.com", projectId:"fee-tracker-f32f8", storageBucket:"fee-tracker-f32f8.firebasestorage.app", messagingSenderId:"1061066310105", appId:"1:1061066310105:web:4ca8c0feaa9d6614cd19c8" };
+
+    // ── PROJECT 2 (secondary — fill in your second Firebase project config) ──
+    // Create a second Firebase project at console.firebase.google.com,
+    // paste its config object here, and users will be split 50/50 by UID hash.
+    const cfg2 = {
+      apiKey:            "AIzaSyC3kDVo9dGdc5szhfY2z7AZdsQUoJs3YR0",
+      authDomain:        "feetracker2.firebaseapp.com",
+      projectId:         "feetracker2",
+      storageBucket:     "feetracker2.firebasestorage.app",
+      messagingSenderId: "748688802151",
+      appId:             "1:748688802151:web:3fdcaba9c2e6be7efb2fc2"
+    };
+
+    const _app1 = initializeApp(cfg1, 'primary');
+    // Only init second app if the placeholder config has been filled in
+    const _cfg2Ready = cfg2.apiKey && !cfg2.apiKey.startsWith('PASTE_');
+    const _app2 = _cfg2Ready ? initializeApp(cfg2, 'secondary') : null;
+
     try {
-      initializeAppCheck(_app, {
+      initializeAppCheck(_app1, {
         provider: new ReCaptchaV3Provider('6LfvBpIsAAAAAGwH54i-DnUY-UXEVqOnSFj944ex'),
         isTokenAutoRefreshEnabled: true
       });
     } catch(e) { console.warn('[AppCheck] init failed:', e.message); }
-    const db   = getFirestore(_app);
+
+    const _db1 = getFirestore(_app1);
+    const _db2 = _app2 ? getFirestore(_app2) : null;
+
+    // ── Stable per-UID hash → always routes the same user to the same shard ──
+    function _dbShard(uid) {
+      let h = 0;
+      for (let i = 0; i < uid.length; i++) h = (Math.imul(h, 31) + uid.charCodeAt(i)) | 0;
+      return (h >>> 0) % 2; // 0 = primary, 1 = secondary
+    }
+    function _pickDb(uid) {
+      if (!_db2) return _db1; // fallback: secondary not configured yet
+      return _dbShard(uid) === 0 ? _db1 : _db2;
+    }
+
+    // `db` is set to the correct shard inside bootApp / offline-boot,
+    // before any Firestore collection refs are called.
+    let db = _db1; // safe default until auth resolves
+
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
 
-    // ── Enable Firestore offline persistence ──────────────────────────────────
+    // ── Enable Firestore offline persistence for both shards ─────────────────
     // This makes ALL Firestore reads/writes work offline. Writes are queued
     // in IndexedDB and automatically synced when connection restores.
-    enableIndexedDbPersistence(db).catch(e => {
-      if (e.code === 'failed-precondition') {
-        console.warn('[Firestore] Offline persistence: multiple tabs open');
-      } else if (e.code === 'unimplemented') {
-        console.warn('[Firestore] Offline persistence not supported in this browser');
-      }
-    });
+    function _enablePersistence(dbInstance) {
+      enableIndexedDbPersistence(dbInstance).catch(e => {
+        if (e.code === 'failed-precondition') {
+          console.warn('[Firestore] Offline persistence: multiple tabs open');
+        } else if (e.code === 'unimplemented') {
+          console.warn('[Firestore] Offline persistence not supported in this browser');
+        }
+      });
+    }
+    _enablePersistence(_db1);
+    if (_db2) _enablePersistence(_db2);
 
     // FCM — safe init (fails gracefully if SW not supported)
     let messaging = null;
@@ -4762,6 +4802,42 @@
     // STATE
     let cu = null, teachers = {}, batches = {}, payments = [], searchQ = '', profile = {};
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    const _currencyMap = {
+      'en-IN':'INR','en-US':'USD','en-GB':'GBP','en-AU':'AUD','en-CA':'CAD',
+      'en-NZ':'NZD','en-SG':'SGD','zh-CN':'CNY','zh-TW':'TWD','ja-JP':'JPY',
+      'ko-KR':'KRW','th-TH':'THB','id-ID':'IDR','ms-MY':'MYR','vi-VN':'VND',
+      'de-DE':'EUR','fr-FR':'EUR','it-IT':'EUR','es-ES':'EUR','pt-PT':'EUR',
+      'nl-NL':'EUR','pl-PL':'PLN','ru-RU':'RUB','tr-TR':'TRY','ar-SA':'SAR',
+      'ar-AE':'AED','he-IL':'ILS','hi-IN':'INR','bn-IN':'INR','ta-IN':'INR',
+      'ur-PK':'PKR','pt-BR':'BRL','es-MX':'MXN','es-AR':'ARS','af-ZA':'ZAR',
+      'sw-KE':'KES','am-ET':'ETB','zh-HK':'HKD',
+    };
+    function _detectCurrency(){
+      const lang=navigator.language||'en-IN';
+      if(_currencyMap[lang]) return _currencyMap[lang];
+      const m=Object.keys(_currencyMap).find(k=>k.startsWith(lang.split('-')[0]+'-'));
+      return m?_currencyMap[m]:'INR';
+    }
+    const USER_CURRENCY=_detectCurrency();
+    const USER_LOCALE=navigator.language||'en-IN';
+    function fmt(n){
+      try{ return new Intl.NumberFormat(USER_LOCALE,{style:'currency',currency:USER_CURRENCY,maximumFractionDigits:0}).format(n); }
+      catch(e){ return '₹'+n.toLocaleString(); }
+    }
+    function fmtCompact(n){
+      try{ return new Intl.NumberFormat(USER_LOCALE,{style:'currency',currency:USER_CURRENCY,notation:'compact',maximumFractionDigits:1}).format(n); }
+      catch(e){ return fmt(n); }
+    }
+    window._fmt=fmt;
+    function _applyCurSymbol(){
+      try{
+        const sym=(0).toLocaleString(USER_LOCALE,{style:'currency',currency:USER_CURRENCY,minimumFractionDigits:0}).replace(/[0-9,. ]/g,'').trim();
+        document.querySelectorAll('.cur').forEach(el=>{ el.textContent=sym; });
+      }catch(e){}
+    }
+    document.addEventListener('DOMContentLoaded',_applyCurSymbol);
+    window._applyCurSymbol=_applyCurSymbol;
 
     // REFS
     const uid    = () => cu.uid;
@@ -4843,10 +4919,16 @@
     function saveBatchDetailToCache(bid){
       if(!bid) return;
       idbSet(bid, { students: batchStudents, payments: batchPayments }, 'batches_detail');
+      // Record when this batch's detail was last fetched from Firestore
+      try { idbSet('_batchDetailTs_'+bid, Date.now()); } catch(e){}
     }
     async function loadBatchDetailFromCache(bid){
       const d = await idbGet(bid, 'batches_detail');
       return d || null; // { students, payments } or null
+    }
+    // Bust per-batch + main sync timestamps after any write inside a batch
+    function _invalidateBatchCache(bid){
+      try { idbSet('_batchDetailTs_'+bid, null); idbSet('_lastSyncTs', null); } catch(e){}
     }
 
     // Sync reads for boot (fallback to localStorage for first-run migration)
@@ -4930,7 +5012,7 @@
             total,
             role: profile.role||'student',
             name: profile.displayName||'',
-            updatedAt: n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
+            updatedAt: n.toLocaleTimeString(USER_LOCALE,{hour:'2-digit',minute:'2-digit'}),
           }
         });
       } catch(e){}
@@ -4975,7 +5057,9 @@
 
     // ── Network status ──────────────────────────────────────────────────────
     window.addEventListener('online', async () => {
+      _onlineSince=Date.now();
       showOfflineBanner(false);
+      const _cb=document.getElementById('menuConnectBtn'); if(_cb) _cb.style.display='';
       navigator.serviceWorker?.controller?.postMessage({ type: 'ONLINE' });
 
       if (loaded && profile.role) {
@@ -5000,7 +5084,7 @@
       showOfflineBanner(true);
     });
     // Set initial state
-    if(!navigator.onLine) showOfflineBanner(true);
+    if(!navigator.onLine){ const _cbi=document.getElementById('menuConnectBtn'); if(_cbi) _cbi.style.display='none'; showOfflineBanner(true); }
 
     // UTILS
     function mBetween(a,b){ return (b.year-a.year)*12+(b.month-a.month); }
@@ -5208,7 +5292,7 @@
     function buildReminderBody(dueTeachers) {
       const count = dueTeachers.length;
       const total = dueTeachers.reduce((s, id) => s + calcDue(id), 0);
-      const fmt   = n => `₹${n.toLocaleString('en-IN')}`;
+      const _fmt2 = window._fmt || (n => n.toLocaleString());
 
       if (count === 0) return null;
 
@@ -5216,18 +5300,18 @@
         // Single teacher — show full name + months + amount
         const t  = teachers[dueTeachers[0]];
         const mo = monthsDue(dueTeachers[0]);
-        return `${t.name} — ${mo} month${mo>1?'s':''} due (${fmt(calcDue(dueTeachers[0]))})`;
+        return `${t.name} — ${mo} month${mo>1?'s':''} due (${_fmt2(calcDue(dueTeachers[0]))})`;
       }
 
       if (count === 2) {
         // Two teachers — show both first names + total
         const n1 = teachers[dueTeachers[0]].name.split(' ')[0];
         const n2 = teachers[dueTeachers[1]].name.split(' ')[0];
-        return `${n1} & ${n2} — ${fmt(total)} total due`;
+        return `${n1} & ${n2} — ${_fmt2(total)} total due`;
       }
 
       // 3 or more — show count + total, no individual names
-      return `${count} teachers — ${fmt(total)} total outstanding`;
+      return `${count} teachers — ${_fmt2(total)} total outstanding`;
     }
 
     async function initNotifications() {
@@ -5282,7 +5366,20 @@
         const cached = await idbGet('profile') || LS.get('profile');
         if(cached){ profile=cached; updateRole(); }
       }
-      try{ const s=await getDoc(prRef()); if(s.exists()){ profile=s.data(); saveProfileToCache(profile); }
+      // ── TTL gate — skip Firestore getDoc if profile was synced recently ──
+      try {
+        const profileTs = await idbGet('_profileSyncTs');
+        if (profile.role && profileTs && (Date.now() - profileTs) < 10 * 60 * 1000) {
+          updateRole();
+          return; // cache is fresh, no read needed
+        }
+      } catch(e) { /* proceed */ }
+      try{
+        const s=await getDoc(prRef());
+        if(s.exists()){
+          profile=s.data(); saveProfileToCache(profile);
+          try { await idbSet('_profileSyncTs', Date.now()); } catch(e){}
+        }
       } catch(e){ console.warn('Profile fetch failed, using cache'); }
       updateRole();
     }
@@ -5376,7 +5473,10 @@
       else { d.subjects=pSubjects; d.classes=pClasses; d.session=document.getElementById('profileSession').value.trim(); }
       try{
         const roleChanged = profile.role !== d.role;
-        await setDoc(prRef(),d); profile=d; saveProfileToCache(d); updateRole();
+        await setDoc(prRef(),d); profile=d; saveProfileToCache(d);
+        // Invalidate caches so next loadAll/loadProfile fetches fresh from Firestore
+        try { await idbSet('_profileSyncTs', null); await idbSet('_lastSyncTs', null); } catch(e){}
+        updateRole();
         closeProfileModal(); toast('Profile saved','success');
         if(roleChanged){ teachers={}; batches={}; payments=[]; appRendered=false; }
         await loadAll();
@@ -5477,16 +5577,35 @@
     // Track whether real content has ever been rendered — prevents skeleton flash on re-loads
     let appRendered = false;
 
-    async function loadAll(silent=false){
+    // ── How long (ms) a successful Firestore sync is considered "fresh" ──────
+    // Within this window, app reloads and re-focuses skip the round-trip entirely.
+    const _SYNC_TTL = 5 * 60 * 1000; // 5 minutes
+
+    async function loadAll(silent=false, force=false){
       // Always render whatever we have immediately (cache or empty state)
       if (!appRendered) {
         render(); // instant render from cache (or empty state)
+      }
+
+      // ── Staleness gate — skip Firestore fetch if cache is fresh enough ───
+      if (!force) {
+        try {
+          const lastSync = await idbGet('_lastSyncTs');
+          if (lastSync && (Date.now() - lastSync) < _SYNC_TTL) {
+            console.log('[Cache] Data fresh, skipping Firestore sync');
+            if (!appRendered) render();
+            appRendered = true;
+            return;
+          }
+        } catch(e) { /* IDB unavailable — proceed with fetch */ }
       }
 
       // Snapshot data before fetch so we can diff
       const _prevTeachers = JSON.stringify(teachers);
       const _prevBatches  = JSON.stringify(batches);
       const _prevPayments = JSON.stringify(payments);
+      // Also snapshot batch metadata so we can skip pre-caching unchanged batches
+      const _prevBatchMeta = JSON.parse(_prevBatches || '{}');
 
       // Sync Firestore — never touch the DOM until data arrives
       let fetchOk = false;
@@ -5499,22 +5618,31 @@
           teachers={}; ts.forEach(d=>{ teachers[d.id]=d.data(); });
           payments=ps.docs.map(d=>({id:d.id,...d.data()}));
         }
-        saveToCache(); showOfflineBanner(false); fetchOk=true;
+        saveToCache();
+        // ── Record successful sync timestamp ──
+        try { await idbSet('_lastSyncTs', Date.now()); } catch(e){}
+        showOfflineBanner(false); fetchOk=true;
       } catch(e){ console.warn('Firestore sync failed, using cache:',e); if(!navigator.onLine) showOfflineBanner(true); }
 
 
-      // ── Pre-cache all batch details in background ──
-      // So teacher can open any batch offline instantly
+      // ── Pre-cache batch details — only for batches that actually changed ──
+      // Skips fetching students/payments for batches whose metadata hasn't changed
+      // and that already have a detail cache entry. This saves N×2 reads on typical reloads.
       if(isT() && fetchOk && Object.keys(batches).length > 0){
         Promise.all(Object.keys(batches).map(async bid => {
           try{
+            const batchUnchanged = JSON.stringify(batches[bid]) === JSON.stringify(_prevBatchMeta[bid]);
+            const cachedDetail   = await idbGet(bid, 'batches_detail').catch(()=>null);
+            if (batchUnchanged && cachedDetail) {
+              return; // already up to date — skip the 2 reads
+            }
             const [sSnap,pSnap] = await Promise.all([getDocs(stuCol(bid)),getDocs(bpyCol(bid))]);
             const studs={}, pays=[];
             sSnap.forEach(d=>{ studs[d.id]=d.data(); });
             pSnap.docs.forEach(d=>{ pays.push({id:d.id,...d.data()}); });
             await idbSet(bid, {students:studs,payments:pays}, 'batches_detail');
           }catch(e){}
-        })).then(()=> console.log('[Cache] All batch details pre-cached'));
+        })).then(()=> console.log('[Cache] Batch details pre-cached (changed only)'));
       }
 
       if(isT()) { try { await loadStandaloneStudents(); } catch(e){} }
@@ -5551,34 +5679,36 @@
         const v=parseInt(document.getElementById('pay-'+id).value);
         if(!v||v<1||v>max) return toast(`Enter 1\u2013${max}`,'error');
         const amt=v*t.fee;
-        if(!await confirm2('Confirm Payment',`Mark <strong style="color:#f0f0f8">₹${amt.toLocaleString('en-IN')}</strong> for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Mark',_CI.pay)) return;
+        if(!await confirm2('Confirm Payment',`Mark <strong style="color:#f0f0f8">${fmt(amt)}</strong> for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Mark',_CI.pay)) return;
         const newPay={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,amount:amt,type:'full',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){
           newPay.id='local_'+Date.now(); payments.push(newPay); saveToCache();
-          toast(`Paid ₹${amt.toLocaleString('en-IN')} ✓ (queued — will sync online)`,'success');
+          toast(`Paid ${fmt(amt)} ✓ (queued — will sync online)`,'success');
           // Fire-and-forget: Firestore SDK will sync when back online
           addDoc(pyCol(),newPay).catch(()=>{});
         } else {
           const fref=await addDoc(pyCol(),newPay); newPay.id=fref.id; payments.push(newPay); saveToCache();
-          toast(`Paid ₹${amt.toLocaleString('en-IN')} ✓`,'success');
+          try { idbSet('_lastSyncTs', null); } catch(e){}
+          toast(`Paid ${fmt(amt)} ✓`,'success');
         }
         setTimeout(updateTotalCard, 100);
       } else if(type==='partial'){
         const amt=parseInt(document.getElementById('pay-partial-'+id).value);
         if(!amt||amt<1) return toast('Enter an amount','error');
-        if(amt>=t.fee) return toast(`Use Full tab for ₹${t.fee}+`,'error');
+        if(amt>=t.fee) return toast(`Use Full tab for ${fmt(t.fee)}+`,'error');
         const ex=partialBal(id), tot=ex+amt;
         if(tot>=t.fee) return toast(`Total ₹${tot} covers full month — use Full tab`,'error');
         const rem=t.fee-tot;
-        if(!await confirm2('Partial Payment',`Record <strong style="color:#f0f0f8">₹${amt.toLocaleString('en-IN')}</strong> partial to ${t.name}?<br><small style="color:var(--muted)">Still owed: ₹${rem.toLocaleString('en-IN')}</small>`,'Record',_CI.part)) return;
+        if(!await confirm2('Partial Payment',`Record <strong style="color:#f0f0f8">${fmt(amt)}</strong> partial to ${t.name}?<br><small style="color:var(--muted)">Still owed: ${fmt(rem)}</small>`,'Record',_CI.part)) return;
         const newPay2={teacherId:id,teacherName:t.name,subject:t.subject,amount:amt,type:'partial',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){
           newPay2.id='local_'+Date.now(); payments.push(newPay2); saveToCache();
-          toast(`Partial ₹${amt.toLocaleString('en-IN')} queued — syncs online`,'success');
+          toast(`Partial ${fmt(amt)} queued — syncs online`,'success');
           addDoc(pyCol(),newPay2).catch(()=>{});
         } else {
           const fref2=await addDoc(pyCol(),newPay2); newPay2.id=fref2.id; payments.push(newPay2); saveToCache();
-          toast(`Partial ₹${amt.toLocaleString('en-IN')} recorded`,'success');
+          try { idbSet('_lastSyncTs', null); } catch(e){}
+          toast(`Partial ${fmt(amt)} recorded`,'success');
         }
         setTimeout(updateTotalCard, 100);
       } else if(type==='advance'){
@@ -5586,15 +5716,16 @@
         const v=parseInt(document.getElementById('pay-advance-'+id).value);
         if(!v||v<1||v>12) return toast('Enter 1\u201312 months','error');
         const amt=v*t.fee;
-        if(!await confirm2('Advance Payment',`Pay <strong style="color:#f0f0f8">₹${amt.toLocaleString('en-IN')}</strong> advance for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?<br><small style="color:var(--muted)">No dues for next ${v} month${v>1?'s':''}</small>`,'Pay',_CI.adv)) return;
+        if(!await confirm2('Advance Payment',`Pay <strong style="color:#f0f0f8">${fmt(amt)}</strong> advance for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?<br><small style="color:var(--muted)">No dues for next ${v} month${v>1?'s':''}</small>`,'Pay',_CI.adv)) return;
         const newPay3={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,advanceMonths:v,amount:amt,type:'advance',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){
           newPay3.id='local_'+Date.now(); payments.push(newPay3); saveToCache();
-          toast(`Advance ₹${amt.toLocaleString('en-IN')} queued — syncs online`,'success');
+          toast(`Advance ${fmt(amt)} queued — syncs online`,'success');
           addDoc(pyCol(),newPay3).catch(()=>{});
         } else {
           const fref3=await addDoc(pyCol(),newPay3); newPay3.id=fref3.id; payments.push(newPay3); saveToCache();
-          toast(`Advance ₹${amt.toLocaleString('en-IN')} paid ✓`,'success');
+          try { idbSet('_lastSyncTs', null); } catch(e){}
+          toast(`Advance ${fmt(amt)} paid ✓`,'success');
         }
         setTimeout(updateTotalCard, 100);
       }
@@ -5603,13 +5734,17 @@
 
     window.deletePayment=async function(id){
       if(!await confirm2('Delete Payment','This cannot be undone.','Delete',_CI.del)) return;
-      await deleteDoc(pyDoc(id)); payments=payments.filter(p=>p.id!==id); saveToCache(); toast('Deleted',''); render();
+      await deleteDoc(pyDoc(id)); payments=payments.filter(p=>p.id!==id); saveToCache();
+      try { idbSet('_lastSyncTs', null); } catch(e){}
+      toast('Deleted',''); render();
     };
     window.deleteTeacher=async function(id){
       const t=teachers[id];
       if(!await confirm2('Remove Teacher',`Remove <strong style="color:#f0f0f8">${t.name}</strong> and all history?`,'Remove',_CI.rem)) return;
       await Promise.all(payments.filter(p=>p.teacherId===id).map(p=>deleteDoc(pyDoc(p.id))));
-      await deleteDoc(tcDoc(id)); payments=payments.filter(p=>p.teacherId!==id); delete teachers[id]; saveToCache(); toast(`${t.name} removed`,''); render();
+      await deleteDoc(tcDoc(id)); payments=payments.filter(p=>p.teacherId!==id); delete teachers[id]; saveToCache();
+      try { idbSet('_lastSyncTs', null); } catch(e){}
+      toast(`${t.name} removed`,''); render();
     };
     window.deleteBatch=async function(id){
       const b=batches[id];
@@ -5619,6 +5754,7 @@
         await deleteDoc(btDoc(id));
         delete batches[id];
         saveToCache();
+        try { idbSet('_lastSyncTs', null); idbSet('_batchDetailTs_'+id, null); } catch(e){}
         toast(`${b.name} removed`,'');
         render();
       } catch(e) { toast('Error: '+e.message,'error'); }
@@ -5900,6 +6036,7 @@
       const _db=document.getElementById('dashBtn');
       if(_db) _db.classList.remove('hidden');
       // Run count-up on total amount after DOM settles
+      setTimeout(_applyCurSymbol, 30);
       setTimeout(runTotalCountUp, 60);
     }
 
@@ -5933,13 +6070,13 @@
             <div class="card-header">
               <div class="card-left">
                 <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
-                <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
+                <div class="teacher-subject">${t.subject} · ${fmt(t.fee)}/mo</div>
                 ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
               </div>
               <div class="due-badge">
-                <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
+                <div class="due-amount ${da===0?'zero':cr?'critical':''}">${fmt(da)}</div>
                 <div class="due-months">${dm===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>All clear':`${dm} month${dm>1?'s':''} due`}</div>
-                ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
+                ${pb>0?`<div class="partial-chip">+${fmt(pb)} partial</div>`:''}
               </div>
             </div>
           </div>
@@ -5964,14 +6101,14 @@
     function renderStudent(){
       const root=document.getElementById('appInner');
       const td=totalDue(), n=new Date();
-      const ds=n.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+      const ds=n.toLocaleDateString(USER_LOCALE,{day:'numeric',month:'long',year:'numeric'});
       const ov=Object.keys(teachers).filter(id=>monthsDue(id)>0).length;
       const cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><circle cx="9" cy="6" r="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M2 16c0-3.9 3.1-6 7-6s7 2.1 7 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
         <div class="total-card" id="totalCard" style="cursor:pointer" onclick="handleTotalCardClick(event)">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
+          <div class="total-amount"><span class="cur"></span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
           <div class="total-sub" id="totalDateSub">As of ${ds}</div>
           <div class="total-meta" id="totalMeta">
             <div class="total-meta-item total-meta-item--pending" id="metaPending" onclick="event.stopPropagation();filterByStatus('pending')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show pending teachers">
@@ -6013,13 +6150,13 @@
             <div class="card-header">
               <div class="card-left">
                 <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
-                <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
+                <div class="teacher-subject">${t.subject} · ${fmt(t.fee)}/mo</div>
                 ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
               </div>
               <div class="due-badge">
-                <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
+                <div class="due-amount ${da===0?'zero':cr?'critical':''}">${fmt(da)}</div>
                 <div class="due-months">${dm===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>All clear':`${dm} month${dm>1?'s':''} due`}</div>
-                ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
+                ${pb>0?`<div class="partial-chip">+${fmt(pb)} partial</div>`:''}
               </div>
             </div>
           </div>
@@ -6077,40 +6214,40 @@
         const v=parseInt(document.getElementById('spay-'+sid).value);
         if(!v||v<1||v>max)return toast('Enter 1\u2013'+max,'error');
         const amt=v*fee;
-        if(!await confirm2('Mark Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>\u20b9${amt.toLocaleString('en-IN')} \u00b7 ${v} month${v>1?'s':''}?`,'Mark',_CI.pay))return;
+        if(!await confirm2('Mark Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>${fmt(amt)} \u00b7 ${v} month${v>1?'s':''}?`,'Mark',_CI.pay))return;
         const _sp1={studentId:sid,studentName:st.name,monthsPaid:v,amount:amt,type:'full',paidOn:po,timestamp:Date.now(),batchId:bid};
         if(!navigator.onLine){ _sp1.id='local_'+Date.now(); payments.push(_sp1); batchPayments.push(_sp1); saveToCache(); addDoc(bpyCol(bid),_sp1).catch(()=>{}); }
-        else { const _sr1=await addDoc(bpyCol(bid),_sp1); _sp1.id=_sr1.id; payments.push(_sp1); batchPayments.push(_sp1); saveToCache(); }
-        document.getElementById('spay-'+sid).value='';toast('\u20b9'+amt.toLocaleString('en-IN')+' marked \u2713','success');
+        else { const _sr1=await addDoc(bpyCol(bid),_sp1); _sp1.id=_sr1.id; payments.push(_sp1); batchPayments.push(_sp1); saveToCache(); _invalidateBatchCache(bid); }
+        document.getElementById('spay-'+sid).value='';toast(fmt(amt)+' marked \u2713','success');
       }else if(type==='partial'){
         const amt=parseInt(document.getElementById('spay-partial-'+sid).value);
         if(!amt||amt<1)return toast('Enter amount','error');if(amt>=fee)return toast('Use Full tab','error');
         const tot=sPartialBal(bid,sid)+amt;if(tot>=fee)return toast('Use Full tab instead','error');
-        if(!await confirm2('Partial Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>\u20b9${amt.toLocaleString('en-IN')} partial<br><small style="color:var(--muted)">Still owed: \u20b9${(fee-tot).toLocaleString('en-IN')}</small>`,'Mark',_CI.part))return;
+        if(!await confirm2('Partial Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>${fmt(amt)} partial<br><small style="color:var(--muted)">Still owed: ${fmt((fee-tot))}</small>`,'Mark',_CI.part))return;
         const _sp2={studentId:sid,studentName:st.name,amount:amt,type:'partial',paidOn:po,timestamp:Date.now(),batchId:bid};
         if(!navigator.onLine){ _sp2.id='local_'+Date.now(); payments.push(_sp2); batchPayments.push(_sp2); saveToCache(); addDoc(bpyCol(bid),_sp2).catch(()=>{}); }
-        else { const _sr2=await addDoc(bpyCol(bid),_sp2); _sp2.id=_sr2.id; payments.push(_sp2); batchPayments.push(_sp2); saveToCache(); }
+        else { const _sr2=await addDoc(bpyCol(bid),_sp2); _sp2.id=_sr2.id; payments.push(_sp2); batchPayments.push(_sp2); saveToCache(); _invalidateBatchCache(bid); }
         document.getElementById('spay-partial-'+sid).value='';toast('Partial \u20b9'+amt.toLocaleString('en-IN')+' recorded','success');
       }else if(type==='advance'){
         if(sMonthsDue(bid,sid)>0)return toast('Clear dues first','error');
         const v=parseInt(document.getElementById('spay-advance-'+sid).value);
         if(!v||v<1||v>12)return toast('Enter 1\u201312','error');const amt=v*fee;
-        if(!await confirm2('Advance Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>\u20b9${amt.toLocaleString('en-IN')} \u00b7 ${v} month${v>1?'s':''} ahead?`,'Mark',_CI.adv))return;
+        if(!await confirm2('Advance Payment',`<strong style="color:#f0f0f8">${st.name}</strong><br>${fmt(amt)} \u00b7 ${v} month${v>1?'s':''} ahead?`,'Mark',_CI.adv))return;
         const _sp3={studentId:sid,studentName:st.name,monthsPaid:v,advanceMonths:v,amount:amt,type:'advance',paidOn:po,timestamp:Date.now(),batchId:bid};
         if(!navigator.onLine){ _sp3.id='local_'+Date.now(); payments.push(_sp3); batchPayments.push(_sp3); saveToCache(); addDoc(bpyCol(bid),_sp3).catch(()=>{}); }
-        else { const _sr3=await addDoc(bpyCol(bid),_sp3); _sp3.id=_sr3.id; payments.push(_sp3); batchPayments.push(_sp3); saveToCache(); }
+        else { const _sr3=await addDoc(bpyCol(bid),_sp3); _sp3.id=_sr3.id; payments.push(_sp3); batchPayments.push(_sp3); saveToCache(); _invalidateBatchCache(bid); }
         document.getElementById('spay-advance-'+sid).value='';toast('Advance \u20b9'+amt.toLocaleString('en-IN')+' \u2713','success');
       }
       await loadBatchDetail(bid);};
 
     window.deleteStudentPayment=async function(bid,pid){
       if(!await confirm2('Delete Payment','Cannot be undone.','Delete',_CI.del))return;
-      await deleteDoc(bpyDoc(bid,pid));toast('Deleted','');await loadBatchDetail(bid);};
+      await deleteDoc(bpyDoc(bid,pid)); _invalidateBatchCache(bid); toast('Deleted','');await loadBatchDetail(bid);};
     window.deleteStudent=async function(bid,sid){
       const st=batchStudents[sid];
       if(!await confirm2('Remove Student',`Remove <strong style="color:#f0f0f8">${st.name}</strong>?`,'Remove',_CI.del))return;
       await Promise.all(batchPayments.filter(p=>p.studentId===sid).map(p=>deleteDoc(bpyDoc(bid,p.id))));
-      await deleteDoc(stuDoc(bid,sid));toast(st.name+' removed','');await loadBatchDetail(bid);};
+      await deleteDoc(stuDoc(bid,sid)); _invalidateBatchCache(bid); toast(st.name+' removed','');await loadBatchDetail(bid);};
     window.toggleStudentHist=function(sid){
       document.getElementById('shist-'+sid)?.classList.toggle('open');
       document.getElementById('stog-'+sid)?.classList.toggle('open');};
@@ -6121,6 +6258,19 @@
 
     async function loadBatchDetail(bid){
       currentBatchId=bid;
+      // ── TTL gate — use IDB cache if detail was synced within last 3 minutes ──
+      try {
+        const batchTs = await idbGet('_batchDetailTs_'+bid);
+        if (batchTs && (Date.now() - batchTs) < 3 * 60 * 1000) {
+          const cached = await loadBatchDetailFromCache(bid);
+          if (cached) {
+            batchStudents = cached.students || {};
+            batchPayments = cached.payments || [];
+            renderBatchDetail(bid);
+            return;
+          }
+        }
+      } catch(e) { /* proceed with Firestore fetch */ }
       try {
         const [sSnap,pSnap]=await Promise.all([getDocs(stuCol(bid)),getDocs(bpyCol(bid))]);
         batchStudents={};sSnap.forEach(d=>{batchStudents[d.id]=d.data();});
@@ -6154,7 +6304,7 @@
           <div class="bd-sum-main">
             <div>
               <div class="bd-sum-label">Outstanding</div>
-              <div class="bd-sum-amount" style="color:#fff">₹${totalDueAmt.toLocaleString('en-IN')}</div>
+              <div class="bd-sum-amount" style="color:#fff">${fmt(totalDueAmt)}</div>
             </div>
           </div>
           <div class="bd-sum-meta">
@@ -6176,14 +6326,14 @@
           <div class="sc-top"><div class="sc-header">
             <div class="sc-left">
               <div class="sc-name-row"><div class="sc-avatar">${init}</div><div class="sc-name">${st.name}</div>${odB}</div>
-              <div class="sc-meta">\u20b9${fee.toLocaleString('en-IN')}/mo</div>
+              <div class="sc-meta">${fmt(fee)}/mo</div>
               ${st.admissionDay?`<div class="sc-admission">Joined: <span>${st.admissionDay} ${MONTHS[st.admissionMonth-1]} ${st.admissionYear}</span></div>`:''}
               ${lps?`<div class="sc-last-paid">Last paid: ${lps}</div>`:`<div class="sc-last-paid never">Never paid</div>`}
             </div>
             <div class="sc-due-badge">
-              <div class="sc-due-amt ${da===0?'zero':cr?'crit':''}">\u20b9${da.toLocaleString('en-IN')}</div>
+              <div class="sc-due-amt ${da===0?'zero':cr?'crit':''}">${fmt(da)}</div>
               <div class="sc-due-mo">${dm===0?'All clear \u2713':`${dm} month${dm>1?'s':''} due`}</div>
-              ${pb>0?`<div class="sc-partial-chip">+\u20b9${pb.toLocaleString('en-IN')} partial</div>`:''}
+              ${pb>0?`<div class="sc-partial-chip">+${fmt(pb)} partial</div>`:''}
             </div>
           </div>
           <div class="pay-tabs">
@@ -6215,8 +6365,8 @@
             ${pays.length===0?'<div class="hist-empty">No payments yet</div>':
               '<div class="swipe-hint">&#x2190; swipe to delete</div>'+pays.map(p=>{
                 const hb=p.type==='partial'?'<span class="hist-badge hist-partial">Partial</span>':p.type==='advance'?'<span class="hist-badge hist-advance">Advance</span>':'';
-                const lb=p.type==='partial'?`\u20b9${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
-                return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endStudentSwipe(this,'${bid}','${p.id}')"><div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'--'}</div></div><div class="pay-amt-tag">\u20b9${p.amount.toLocaleString('en-IN')}</div></div>`;
+                const lb=p.type==='partial'?`${fmt(p.amount)} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
+                return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endStudentSwipe(this,'${bid}','${p.id}')"><div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'--'}</div></div><div class="pay-amt-tag">${fmt(p.amount)}</div></div>`;
               }).join('')}
           </div>
         </div>`;dl=Math.min(dl+0.05,0.3);}
@@ -6257,6 +6407,7 @@
           if(dv){const p=dv.split('-'),now=new Date(),aMs=parseInt(p[0])*12+parseInt(p[1]),nMs=now.getFullYear()*12+(now.getMonth()+1);if(aMs<nMs){upd.baselineMonth=parseInt(p[1]);upd.baselineYear=parseInt(p[0]);}}
         }
         await updateDoc(doc(db,'users',uid(),'batches',_editStuBid,'students',_editStuSid),upd);
+        _invalidateBatchCache(_editStuBid);
         batchStudents[_editStuSid]={...batchStudents[_editStuSid],...upd};
         closeEditStudentModal(); renderBatchDetail(_editStuBid);
         toast('Student updated \u2713','success');
@@ -6400,6 +6551,7 @@
           }
           return addDoc(stuCol(bid),sd);
         }));
+        _invalidateBatchCache(bid);
         closeAddStudentModal();toast(pendingStudents.length+' student'+(pendingStudents.length>1?'s':'')+' added \u2713','success');
         await loadBatchDetail(bid);
       }catch(e){toast('Error: '+e.message,'error');}
@@ -6432,7 +6584,7 @@
           h+=`<div class="batch-card ${isSel?'selected':''}" data-id="${bid}" style="animation-delay:${dl}s"
             onclick="if(selMode&&selContext==='batch'){selTap('${bid}');return;}openBatchDetail('${bid}')">
 
-            <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ₹${b.fee}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
+            <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ${fmt(b.fee)}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
             <div class="batch-subject-list">${b.subject.split(',').map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
             ${selMode&&selContext==='batch'?'':`<div class="batch-actions">
               <button class="batch-open-btn" onclick="event.stopPropagation();openBatchDetail('${bid}')" style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M11 13v-1a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 13v-1a3 3 0 0 0-2-2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> View students ›</button>
@@ -6447,12 +6599,21 @@
     let _standaloneStudents=[], _assignIsStandalone=false;
 
     async function loadStandaloneStudents(){
+      // ── TTL gate — skip Firestore read if standalone list is fresh ──
+      try {
+        const ssTs = await idbGet('_standaloneStudentsTs');
+        if (ssTs && (Date.now() - ssTs) < 5 * 60 * 1000) {
+          const cached = await idbGet('standalone_students');
+          if (cached) { _standaloneStudents = cached; return; }
+        }
+      } catch(e) { /* proceed */ }
       try{
         const snap=await getDocs(collection(db,'users',uid(),'students'));
         _standaloneStudents=[];
         snap.forEach(d=>_standaloneStudents.push({id:d.id,...d.data()}));
         // Cache for offline use
         idbSet('standalone_students', _standaloneStudents);
+        try { idbSet('_standaloneStudentsTs', Date.now()); } catch(e){}
       }catch(e){
         // Offline — use cached data if available
         const cached = await idbGet('standalone_students');
@@ -6481,11 +6642,11 @@
             <div class="standalone-avatar">${(s.name||'S')[0].toUpperCase()}</div>
             <div class="standalone-info">
               <div class="standalone-name">${s.name||'Student'}</div>
-              <div class="standalone-meta">Individual · ₹${fee.toLocaleString('en-IN')}/mo</div>
+              <div class="standalone-meta">Individual · ${fmt(fee)}/mo</div>
               ${s.lastPaidDate?`<div style="font-size:10px;color:var(--accent3);margin-top:2px">Last paid: ${s.lastPaidDate}</div>`:'<div style="font-size:10px;color:var(--red);opacity:.7;margin-top:2px">Never paid</div>'}
             </div>
             <div class="standalone-due">
-              <div class="standalone-due-amt" style="color:${dueCol}">₹${due.toLocaleString('en-IN')}</div>
+              <div class="standalone-due-amt" style="color:${dueCol}">${fmt(due)}</div>
               <div style="font-size:10px;color:var(--muted);margin-top:2px">${mo===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Clear':mo+'mo due'}</div>
             </div>
           </div>
@@ -6519,7 +6680,7 @@
       _assignStudentIds=[sid]; _assignIsStandalone=true;
       const list=document.getElementById('assignBatchList');
       let ah='';
-      Object.keys(batches).forEach(bid=>{const b=batches[bid];ah+=`<div class="batch-pick-item" data-bid="${bid}" onclick="toggleBatchPick(this,'${bid}')"><div class="batch-pick-icon" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M1 5a2 2 0 0 1 2-2h3.5l1.5 2H13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="currentColor" fill-opacity=".08"/></svg></div><div><div class="batch-pick-name">${b.name}</div><div class="batch-pick-sub">₹${b.fee}/mo per student</div></div></div>`;});
+      Object.keys(batches).forEach(bid=>{const b=batches[bid];ah+=`<div class="batch-pick-item" data-bid="${bid}" onclick="toggleBatchPick(this,'${bid}')"><div class="batch-pick-icon" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M1 5a2 2 0 0 1 2-2h3.5l1.5 2H13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="currentColor" fill-opacity=".08"/></svg></div><div><div class="batch-pick-name">${b.name}</div><div class="batch-pick-sub">${fmt(b.fee)}/mo per student</div></div></div>`;});
       ah+=`<div class="batch-pick-item" onclick="toggleBatchPick(this,'__new__')" style="border-style:dashed"><div style="font-size:18px;font-weight:700">+</div><div><div class="batch-pick-name">Create New Batch</div><div class="batch-pick-sub">Move to a brand new batch</div></div></div>`;
       list.innerHTML=ah||'<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No batches. Use + to create one first.</div>';
       document.getElementById('assignBatchModal').classList.remove('hidden');
@@ -6706,6 +6867,11 @@
       _offlineBooted = false;
       showOfflineBanner(false);
       loaded = true; cu = user;
+
+      // ── Route this user to the correct Firebase shard (stable per UID) ──
+      db = _pickDb(user.uid);
+      try { localStorage.setItem('ft_db_shard', String(_dbShard(user.uid))); } catch(e){}
+
       const _gb = document.getElementById('googleSignInBtn');
       if (_gb) _gb.disabled = false;
       // Persist uid for offline boot detection
@@ -6788,11 +6954,17 @@
     const _cachedUidSnapshot = localStorage.getItem('ft_uid');
     let _offlineBooted = false;
     let _reconnecting  = false; // blocks false signout during reconnect window
+    let _onlineSince   = 0;
 
     // ── Shared cache-boot helper ───────────────────────────────────────────
     async function _bootFromCache(cachedUid, cachedProfile) {
       if (_offlineBooted || loaded) return;
       _offlineBooted = true;
+      // Restore shard assignment from localStorage so collection refs point to the right DB
+      try {
+        const shard = localStorage.getItem('ft_db_shard') || '0';
+        db = (shard === '1' && _db2) ? _db2 : _db1;
+      } catch(e) { db = _db1; }
       const fakeUser = { uid: cachedUid, displayName: cachedProfile.displayName || 'User', photoURL: null, email: cachedProfile.email || '' };
       await loadFromCacheAsync();
       profile = cachedProfile; updateRole();
@@ -6867,12 +7039,13 @@
         if (!loaded) await bootApp(user);
       } else {
         // Firebase fires null when offline — ignore if user was previously signed in
-        if (_cachedUidSnapshot && (!navigator.onLine || _offlineBooted || _reconnecting)) return;
+        if (_cachedUidSnapshot && (!navigator.onLine || _offlineBooted || _reconnecting || (Date.now()-(_onlineSince||0)<12000))) return;
         // Real sign-out — clear everything
         cu=null; loaded=false; profile={}; appRendered=false; teachers={}; payments=[]; batches={};
         _offlineBooted = false; _reconnecting = false;
-        try { localStorage.removeItem('ft_uid'); } catch(e){}
-        try { idbSet('profile',null); idbSet('teachers',null); idbSet('payments',null); idbSet('batches',null); } catch(e){}
+        try { localStorage.removeItem('ft_uid'); localStorage.removeItem('ft_db_shard'); } catch(e){}
+        try { idbSet('profile',null); idbSet('teachers',null); idbSet('payments',null); idbSet('batches',null);
+              idbSet('_lastSyncTs',null); idbSet('_profileSyncTs',null); } catch(e){}
         const _gb2 = document.getElementById('googleSignInBtn');
         if (_gb2) {
           _gb2.disabled = false;
@@ -7479,9 +7652,11 @@
           delete teachers[id];
         } else if(selContext==='batch'){
           await deleteDoc(btDoc(id));
+          try { idbSet('_batchDetailTs_'+id, null); } catch(e){}
           delete batches[id];
         } else if(selContext==='student'){
           await deleteDoc(stuDoc(currentBatchId,id));
+          _invalidateBatchCache(currentBatchId);
           delete batchStudents[id];
         }
       }
@@ -7506,7 +7681,7 @@
           <div class="batch-pick-icon" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M1 5a2 2 0 0 1 2-2h3.5l1.5 2H13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="currentColor" fill-opacity=".08"/></svg></div>
           <div>
             <div class="batch-pick-name">${b.name}</div>
-            <div class="batch-pick-sub">${b.class||''} · ₹${b.fee}/mo${b.timing?' · '+b.timing:''}</div>
+            <div class="batch-pick-sub">${b.class||''} · ${fmt(b.fee)}/mo${b.timing?' · '+b.timing:''}</div>
           </div>
         </div>`;
       });
@@ -7544,6 +7719,8 @@
             await addDoc(stuCol(bid),{name:st.name,baselineMonth:st.baselineMonth||bm,baselineYear:st.baselineYear||by,createdAt:Date.now(),feeStatus:'never'});
           }
         }
+        _invalidateBatchCache(bid);
+        try { idbSet('_standaloneStudentsTs', null); } catch(e){}
         if(_assignIsStandalone){
           _standaloneStudents=_standaloneStudents.filter(s=>!_assignStudentIds.includes(s.id));
           _renderStandaloneSection();
@@ -7593,6 +7770,7 @@
         if(bid){
           // Add into chosen batch
           await addDoc(stuCol(bid),sd);
+          _invalidateBatchCache(bid);
           toast(`${nm} added to ${batches[bid].name} ✓`,'success');
         } else {
           // Save to standalone students collection
@@ -7600,6 +7778,7 @@
           // Push locally so card appears immediately without reload
           _standaloneStudents.push({id:_newRef.id,...sd});
           idbSet('standalone_students',_standaloneStudents);
+          try { idbSet('_standaloneStudentsTs', Date.now()); } catch(e){}
           toast(`${nm} added ✓`,'success');
         }
         document.getElementById('addStandaloneStudentModal').classList.add('hidden');
@@ -7618,14 +7797,14 @@
       // Get sorted teachers with pin awareness
       const root=document.getElementById('appInner');
       const td=totalDue(), n=new Date();
-      const ds=n.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+      const ds=n.toLocaleDateString(USER_LOCALE,{day:'numeric',month:'long',year:'numeric'});
       const ov=Object.keys(teachers).filter(id=>monthsDue(id)>0).length;
       const cl=Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       let h=`
         ${!profile.className?`<div class="setup-banner" onclick="openProfileModal()"><span class="setup-banner-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><circle cx="9" cy="6" r="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M2 16c0-3.9 3.1-6 7-6s7 2.1 7 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="setup-banner-text"><div class="setup-banner-title">Complete your profile</div><div class="setup-banner-sub">Add your name and class</div></div><button class="setup-banner-btn">Set up</button></div>`:''}
         <div class="total-card" id="totalCard" style="cursor:pointer" onclick="handleTotalCardClick(event)">
           <div class="total-label">Total Outstanding</div>
-          <div class="total-amount"><span class="cur">₹</span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
+          <div class="total-amount"><span class="cur"></span><span id="totalAmtDisplay" data-target="${td}">0</span></div>
           <div class="total-sub" id="totalDateSub">As of ${ds}</div>
           <div class="total-meta" id="totalMeta">
             <div class="total-meta-item total-meta-item--pending" id="metaPending" onclick="event.stopPropagation();filterByStatus('pending')" style="cursor:pointer;transition:transform .15s,opacity .15s;" title="Show pending teachers">
@@ -7670,13 +7849,13 @@
               <div class="card-header">
                 <div class="card-left">
                   <div class="teacher-name-row"><div class="teacher-name">${t.name}</div>${bdg}</div>
-                  <div class="teacher-subject">${t.subject} · ₹${t.fee}/mo</div>
+                  <div class="teacher-subject">${t.subject} · ${fmt(t.fee)}/mo</div>
                   ${lps?`<div class="last-paid">Last paid: ${lps}</div>`:`<div class="last-paid never">Never paid</div>`}
                 </div>
                 <div class="due-badge">
-                  <div class="due-amount ${da===0?'zero':cr?'critical':''}">₹${da.toLocaleString('en-IN')}</div>
+                  <div class="due-amount ${da===0?'zero':cr?'critical':''}">${fmt(da)}</div>
                   <div class="due-months">${dm===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>All clear':`${dm} month${dm>1?'s':''} due`}</div>
-                  ${pb>0?`<div class="partial-chip">+₹${pb.toLocaleString('en-IN')} partial</div>`:''}
+                  ${pb>0?`<div class="partial-chip">+${fmt(pb)} partial</div>`:''}
                 </div>
               </div>
             </div>
@@ -7713,7 +7892,7 @@
         const isSel=selItems.has(bid);
         h+=`<div class="batch-card" data-id="${bid}" style="animation-delay:${dl}s"
           onclick="if(selMode){event.stopPropagation();selTap('${bid}');return;}openBatchDetail('${bid}')" ontouchstart="void 0">
-          <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ₹${b.fee}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
+          <div class="batch-header"><div><div class="batch-name">${b.name}</div><div class="batch-meta">${b.class?b.class+' · ':''} ${fmt(b.fee)}/mo per student${b.timing?' · '+b.timing:''}</div></div>${b.session?`<span class="batch-session-badge">${b.session}</span>`:''}</div>
           <div class="batch-subject-list">${b.subject.split(',').map(s=>`<span class="batch-subj-chip">${s.trim()}</span>`).join('')}</div>
           ${selMode?'':`<div class="batch-actions">
             <button class="batch-open-btn" onclick="event.stopPropagation();openBatchDetail('${bid}')" style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0" ><path d="M11 13v-1a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 13v-1a3 3 0 0 0-2-2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> View students ›</button>
@@ -7751,11 +7930,11 @@
                     <div class="sc-avatar">${(s.name||'S')[0].toUpperCase()}</div>
                     <div class="sc-name">${s.name||'Student'}</div>
                   </div>
-                  <div class="sc-meta">Individual · ₹${fee}/mo</div>
+                  <div class="sc-meta">Individual · ${fmt(fee)}/mo</div>
                   ${s.lastPaidDate?`<div class="sc-last-paid">Last paid: ${s.lastPaidDate}</div>`:'<div class="sc-last-paid never">Never paid</div>'}
                 </div>
                 <div class="sc-due-badge">
-                  <div class="sc-due-amt ${due===0?'zero':''}">₹${due.toLocaleString('en-IN')}</div>
+                  <div class="sc-due-amt ${due===0?'zero':''}">${fmt(due)}</div>
                   <div class="sc-due-mo">${mo===0?'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px"><polyline points="1.5,5.5 4,8 8.5,2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>All clear':`${mo} month${mo>1?'s':''} due`}</div>
                 </div>
               </div>
@@ -7778,7 +7957,11 @@
 
     window.deleteStandaloneStudent=async function(sid,name){
       if(!await confirm2('Remove Student',`Remove <strong style="color:#f0f0f8">${name}</strong>?`,'Remove',_CI.rem)) return;
-      try{ await deleteDoc(doc(db,'users',uid(),'students',sid)); toast(`${name} removed`,''); loadAndRenderStandaloneStudents(document.getElementById('appInner')); }
+      try{
+        await deleteDoc(doc(db,'users',uid(),'students',sid));
+        try { idbSet('_standaloneStudentsTs', null); } catch(e){}
+        toast(`${name} removed`,''); loadAndRenderStandaloneStudents(document.getElementById('appInner'));
+      }
       catch(e){ toast('Error: '+e.message,'error'); }
     };
 
@@ -7787,7 +7970,7 @@
       if(!bKeys.length){ toast('Create a batch first','error'); return; }
       const list=document.getElementById('assignBatchList');
       let ah='';
-      bKeys.forEach(bid=>{ const b=batches[bid]; ah+=`<div class="batch-pick-item" data-bid="${bid}" onclick="toggleBatchPick(this,'${bid}')"><div class="batch-pick-icon" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M1 5a2 2 0 0 1 2-2h3.5l1.5 2H13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="currentColor" fill-opacity=".08"/></svg></div><div><div class="batch-pick-name">${b.name}</div><div class="batch-pick-sub">₹${b.fee}/mo per student</div></div></div>`; });
+      bKeys.forEach(bid=>{ const b=batches[bid]; ah+=`<div class="batch-pick-item" data-bid="${bid}" onclick="toggleBatchPick(this,'${bid}')"><div class="batch-pick-icon" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><path d="M1 5a2 2 0 0 1 2-2h3.5l1.5 2H13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="currentColor" fill-opacity=".08"/></svg></div><div><div class="batch-pick-name">${b.name}</div><div class="batch-pick-sub">${fmt(b.fee)}/mo per student</div></div></div>`; });
       list.innerHTML=ah;
       _assignStudentIds=[sid];
       // Override confirm to handle standalone correctly
@@ -7803,6 +7986,8 @@
           const now3=new Date();
           await addDoc(stuCol(bid),{name:sd.name||name,baselineMonth:sd.baselineMonth||now3.getMonth()+1,baselineYear:sd.baselineYear||now3.getFullYear(),fee:sd.fee,lastPaidDate:sd.lastPaidDate||null,createdAt:Date.now(),feeStatus:'never'});
           await deleteDoc(doc(db,'users',uid(),'students',sid));
+          _invalidateBatchCache(bid);
+          try { idbSet('_standaloneStudentsTs', null); } catch(e){}
           toast(`${name} moved to ${batches[bid].name} ✓`,'success');
           document.getElementById('assignBatchModal').classList.add('hidden');
           loadAndRenderStandaloneStudents(document.getElementById('appInner'));
@@ -7845,7 +8030,7 @@
     //  DASHBOARD — teacher & student
     // ═══════════════════════════════════════════════════
     let _tchDashCharts=[],_stuDashCharts=[];
-    function dashFmt(n){ return '₹'+Number(n).toLocaleString('en-IN'); }
+    function dashFmt(n){ return fmt(Number(n)); }
     function isDarkMode(){ return !document.documentElement.classList.contains('light'); }
     function chartDefaults(){
       const dark=isDarkMode(),tc=dark?'rgba(255,255,255,.55)':'rgba(30,30,60,.6)',gc=dark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)';
@@ -8029,6 +8214,7 @@
         const upd={name:nm,subject:sb,fee:fe,lastPaidDate:dv||null};
         if(dv){ const dp=dv.split('-'); upd.baselineMonth=parseInt(dp[1]); upd.baselineYear=parseInt(dp[0]); }
         await updateDoc(tcDoc(_editTeacherId),upd);
+        try { idbSet('_lastSyncTs', null); } catch(e){}
         teachers[_editTeacherId]={...teachers[_editTeacherId],...upd};
         saveToCache();
         closeEditTeacherModal();
@@ -8058,6 +8244,7 @@
         if(pdv){ const pp=pdv.split('-'); upd.baselineMonth=parseInt(pp[1]); upd.baselineYear=parseInt(pp[0]); }
         if(dv){ const dp=dv.split('-'); upd.admissionDay=parseInt(dp[2]); upd.admissionMonth=parseInt(dp[1]); upd.admissionYear=parseInt(dp[0]); }
         await updateDoc(doc(db,'users',uid(),'students',_editSsId),upd);
+        try { idbSet('_standaloneStudentsTs', null); } catch(e){}
         const idx=_standaloneStudents.findIndex(s=>s.id===_editSsId);
         if(idx>=0) _standaloneStudents[idx]={..._standaloneStudents[idx],...upd};
         document.getElementById('editStandaloneStudentModal').classList.add('hidden');
@@ -8069,8 +8256,8 @@
 
     // PATCH loadAll to also load standalone students
     const _origLoadAll=loadAll;
-    window.loadAll=async function(silent=false){
-      await _origLoadAll(silent);
+    window.loadAll=async function(silent=false, force=false){
+      await _origLoadAll(silent, force);
       if(isT()) await loadStandaloneStudents();
     };
 
@@ -8132,9 +8319,9 @@
       function tick(now){
         const progress = Math.min((now - startTime) / duration, 1);
         const current = Math.round(easeOut(progress) * target);
-        el.textContent = current.toLocaleString('en-IN');
+        el.textContent = current.toLocaleString(USER_LOCALE);
         if(progress < 1){ _countUpRaf = requestAnimationFrame(tick); }
-        else { el.textContent = target.toLocaleString('en-IN'); el.classList.remove('counting'); _countUpRaf=null; }
+        else { el.textContent = target.toLocaleString(USER_LOCALE); el.classList.remove('counting'); _countUpRaf=null; }
       }
       _countUpRaf = requestAnimationFrame(tick);
     }
@@ -8164,12 +8351,12 @@
       const cl = Object.keys(teachers).filter(id=>monthsDue(id)===0).length;
       const total = Object.keys(teachers).length;
       const n = new Date();
-      const ds = n.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+      const ds = n.toLocaleDateString(USER_LOCALE,{day:'numeric',month:'long',year:'numeric'});
       const dateSub = document.getElementById('totalDateSub');
       if(dateSub) dateSub.textContent = 'As of ' + ds;
       function flashUpdate(id, val){
         const el = document.getElementById(id);
-        if(!el || el.textContent === String(val) || el.textContent === val.toLocaleString('en-IN')) return;
+        if(!el || el.textContent === String(val) || el.textContent === fmt(val)) return;
         el.style.transition = 'transform .18s cubic-bezier(.34,1.5,.64,1),opacity .14s';
         el.style.transform = 'scale(1.22)'; el.style.opacity = '0.7';
         setTimeout(()=>{ el.textContent = val; el.style.transform='scale(1)'; el.style.opacity='1'; },90);
@@ -8278,8 +8465,8 @@
       return '<div class="swipe-hint">\u2190 swipe to delete</div>' + tpy.map(p=>{
         const hb = p.type==='partial'?`<span class="hist-badge hist-partial">Partial</span>`:
                    p.type==='advance'?`<span class="hist-badge hist-advance">Advance</span>`:'';
-        const lb = p.type==='partial'?`\u20b9${p.amount.toLocaleString('en-IN')} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
-        return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')"><div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'--'}</div></div><div class="pay-amt-tag">\u20b9${p.amount.toLocaleString('en-IN')}</div></div>`;
+        const lb = p.type==='partial'?`${fmt(p.amount)} partial`:`${p.monthsPaid} month${p.monthsPaid>1?'s':''}`;
+        return `<div class="payment-item" ontouchstart="startSwipe(event,this)" ontouchmove="moveSwipe(event,this)" ontouchend="endSwipe(this,'${p.id}')"><div><div class="pay-months-txt">${lb}${hb}</div><div class="pay-date-txt">${p.paidOn?`${p.paidOn.day} ${MONTHS[p.paidOn.month-1]} ${p.paidOn.year}`:'--'}</div></div><div class="pay-amt-tag">${fmt(p.amount)}</div></div>`;
       }).join('');
     }
 
@@ -8291,7 +8478,7 @@
       document.getElementById('tdsName').textContent = t.name;
       document.getElementById('tdsSubject').textContent = t.subject + ' \xb7 \u20b9' + t.fee + '/mo';
       const dueEl = document.getElementById('tdsDueAmt');
-      dueEl.textContent = '\u20b9' + da.toLocaleString('en-IN');
+      dueEl.textContent = fmt(da);
       dueEl.style.color = da===0?'var(--accent3)':cr?'var(--red)':'var(--text)';
       document.getElementById('tdsDueMonths').textContent = dm===0?'All clear \u2713':dm+' month'+(dm>1?'s':'')+' due';
       const badgeEl = document.getElementById('tdsOverdueBadge');
@@ -8300,7 +8487,7 @@
       const lpEl = document.getElementById('tdsLastPaid');
       lpEl.textContent = lps?'Last paid: '+lps:'Never paid';
       lpEl.style.color = lps?'var(--muted)':'var(--red)';
-      document.getElementById('tdsPartialChip').innerHTML = pb>0?`<span class="partial-chip">+\u20b9${pb.toLocaleString('en-IN')} partial</span>`:'';
+      document.getElementById('tdsPartialChip').innerHTML = pb>0?`<span class="partial-chip">+${fmt(pb)} partial</span>`:'';
       const { tabs, rows } = _tdsPayHtml(id);
       document.getElementById('tdsPayTabs').innerHTML = tabs;
       document.getElementById('tdsPayRows').innerHTML = rows;
@@ -8333,15 +8520,15 @@
         const v = parseInt(document.getElementById('tds-pay-full')?.value);
         if(!v||v<1||v>dm) return toast('Enter 1\u2013'+dm,'error');
         const amt = v*t.fee;
-        if(!await confirm2('Confirm Payment',`Mark <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Mark',_CI.pay)) return;
+        if(!await confirm2('Confirm Payment',`Mark <strong style="color:#f0f0f8">${fmt(amt)}</strong> for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Mark',_CI.pay)) return;
         const p={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,amount:amt,type:'full',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){
           p.id='local_'+Date.now(); payments.push(p); saveToCache();
           addDoc(pyCol(),p).catch(()=>{});
-          toast(`Paid \u20b9${amt.toLocaleString('en-IN')}  (queued)`,'success');
+          toast(`Paid ${fmt(amt)}  (queued)`,'success');
         } else {
           const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
-          toast(`Paid \u20b9${amt.toLocaleString('en-IN')} \u2713`,'success');
+          toast(`Paid ${fmt(amt)} \u2713`,'success');
         }
       } else if(type==='partial'){
         const amt = parseInt(document.getElementById('tds-pay-partial')?.value);
@@ -8349,7 +8536,7 @@
         if(amt>=t.fee) return toast('Use Full tab for \u20b9'+t.fee+'+','error');
         const tot = partialBal(id)+amt;
         if(tot>=t.fee) return toast('Total covers full month — use Full tab','error');
-        if(!await confirm2('Partial Payment',`Record <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> partial to ${t.name}?<br><small style="color:var(--muted)">Still owed: \u20b9${(t.fee-tot).toLocaleString('en-IN')}</small>`,'Record',_CI.part)) return;
+        if(!await confirm2('Partial Payment',`Record <strong style="color:#f0f0f8">${fmt(amt)}</strong> partial to ${t.name}?<br><small style="color:var(--muted)">Still owed: ${fmt((t.fee-tot))}</small>`,'Record',_CI.part)) return;
         const p={teacherId:id,teacherName:t.name,subject:t.subject,amount:amt,type:'partial',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){ p.id='local_'+Date.now(); payments.push(p); saveToCache(); addDoc(pyCol(),p).catch(()=>{}); toast('Partial \u20b9'+amt.toLocaleString('en-IN')+' queued','success'); }
         else { const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
@@ -8359,7 +8546,7 @@
         const v = parseInt(document.getElementById('tds-pay-advance')?.value);
         if(!v||v<1||v>12) return toast('Enter 1\u201312 months','error');
         const amt = v*t.fee;
-        if(!await confirm2('Advance Payment',`Pay <strong style="color:#f0f0f8">\u20b9${amt.toLocaleString('en-IN')}</strong> advance for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Pay',_CI.adv)) return;
+        if(!await confirm2('Advance Payment',`Pay <strong style="color:#f0f0f8">${fmt(amt)}</strong> advance for <strong style="color:#f0f0f8">${v} month${v>1?'s':''}</strong> to ${t.name}?`,'Pay',_CI.adv)) return;
         const p={teacherId:id,teacherName:t.name,subject:t.subject,monthsPaid:v,advanceMonths:v,amount:amt,type:'advance',paidOn:po,timestamp:Date.now()};
         if(!navigator.onLine){ p.id='local_'+Date.now(); payments.push(p); saveToCache(); addDoc(pyCol(),p).catch(()=>{}); toast('Advance \u20b9'+amt.toLocaleString('en-IN')+' queued','success'); }
         else { const ref=await addDoc(pyCol(),p); p.id=ref.id; payments.push(p); saveToCache();
@@ -8762,10 +8949,10 @@
       Object.keys(grps).sort().reverse().forEach(key => {
         const g = grps[key];
         out += `<div class="hist-month-group">
-          <div class="hist-month-label"><span>${g.label}</span><span class="hist-month-total">₹${g.total.toLocaleString('en-IN')}</span></div>`;
+          <div class="hist-month-label"><span>${g.label}</span><span class="hist-month-total">${fmt(g.total)}</span></div>`;
         g.pays.forEach(p => {
           const t = p.type||'full', ic = ICON[t]||ICON.full;
-          const d = p.paidOn ? `${p.paidOn.day||1} ${MONTHS[(p.paidOn.month||1)-1]}` : new Date(p.timestamp).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+          const d = p.paidOn ? `${p.paidOn.day||1} ${MONTHS[(p.paidOn.month||1)-1]}` : new Date(p.timestamp).toLocaleDateString(USER_LOCALE,{day:'numeric',month:'short'});
           const mo = p.monthsPaid ? ` · ${p.monthsPaid} mo` : '';
           const sub2 = isT() ? (p._sub || 'Standalone') : (p._sub || '');
           out += `<div class="hist-row">
@@ -8774,7 +8961,7 @@
               <div class="hist-row-name">${p._name}</div>
               <div class="hist-row-sub">${sub2}${d?' · '+d:''}${mo}</div>
             </div>
-            <div class="hist-row-amt">₹${(p.amount||0).toLocaleString('en-IN')}</div>
+            <div class="hist-row-amt">${fmt((p.amount||0))}</div>
           </div>`;
         });
         out += '</div>';
@@ -8832,7 +9019,7 @@
       if (typeof XLSX !== 'undefined') {
         const wb = XLSX.utils.book_new();
         const title = isT() ? 'Fee Tracker — Collections' : 'Fee Tracker — Payments';
-        const subTitle = `Exported: ${now.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}`;
+        const subTitle = `Exported: ${now.toLocaleDateString(USER_LOCALE,{day:'numeric',month:'long',year:'numeric'})}`;
         const headers = isT()
           ? ['Date','Student','Batch','Type','Months','Amount (₹)']
           : ['Date','Teacher','Subject','Type','Months','Amount (₹)'];
@@ -9007,7 +9194,7 @@
   <div class="pwa-banner hidden" id="pwaBanner">
     <div class="pwa-banner-inner">
       <div class="pwa-banner-top">
-        <div class="pwa-banner-icon"><svg width="28" height="28" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect x="8" y="10" width="56" height="52" rx="10" fill="rgba(255,255,255,.15)"/><path d="M22 24h28M22 24v4a14 14 0 0 0 14 14M22 24h8a10 10 0 0 1 0 18M36 42l10 10" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="pwa-banner-icon" style="padding:0;overflow:hidden;"><img src="icon-192.png" alt="Fee Tracker" style="width:46px;height:46px;border-radius:var(--r-lg);display:block;object-fit:cover;"/></div>
         <div class="pwa-banner-text">
           <div class="pwa-banner-title">Install Fee Tracker</div>
           <div class="pwa-banner-sub">Add to home screen for the full app experience &mdash; works offline too.</div>
@@ -9026,7 +9213,7 @@
     <div class="install-sheet">
       <div class="install-handle"></div>
       <div class="install-row">
-        <div class="install-icon"><svg width="30" height="30" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect x="8" y="10" width="56" height="52" rx="10" fill="rgba(255,255,255,.15)"/><path d="M22 24h28M22 24v4a14 14 0 0 0 14 14M22 24h8a10 10 0 0 1 0 18M36 42l10 10" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="install-icon" style="padding:0;overflow:hidden;"><img src="icon-192.png" alt="Fee Tracker" style="width:48px;height:48px;border-radius:var(--r-lg);display:block;object-fit:cover;"/></div>
         <div class="install-text-wrap">
           <div class="install-title">Install Fee Tracker</div>
           <div class="install-sub">Add to home screen for quick access.<br>Works offline. No app store needed.</div>
