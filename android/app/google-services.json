@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1061066310105",
+    "project_id": "fee-tracker-f32f8",
+    "storage_bucket": "fee-tracker-f32f8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1061066310105:android:923e579acd44de1ccd19c8",
+        "android_client_info": {
+          "package_name": "com.FeeTracker.deb"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1061066310105-eei4cpvg1dd9ivgs1r3alrov05rdh868.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPMX6HKIKp3MYsP1OYWZfuThVRCSVrqNk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1061066310105-eei4cpvg1dd9ivgs1r3alrov05rdh868.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
