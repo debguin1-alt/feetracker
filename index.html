@@ -4773,7 +4773,7 @@
     // before any Firestore collection refs are called.
     let db = _db1; // safe default until auth resolves
 
-    const auth = getAuth();
+    const auth = getAuth(_app1);
     const provider = new GoogleAuthProvider();
 
     // ── Enable Firestore offline persistence for both shards ─────────────────
@@ -4793,7 +4793,7 @@
 
     // FCM — safe init (fails gracefully if SW not supported)
     let messaging = null;
-    try { messaging = getMessaging(_app); } catch(e) { console.warn('[FCM] Not supported:', e); }
+    try { messaging = getMessaging(_app1); } catch(e) { console.warn('[FCM] Not supported:', e); }
 
     // Your VAPID key from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
     const VAPID_KEY = 'BDBRkVjHUVJ5cuWpmYtpiO-wHkLsTblOeAwrUfmcewOktc3rP28fUmTsAlNntrfAoiozhTxgQtw_W0SrdrH2HT4';
