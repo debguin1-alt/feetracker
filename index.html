@@ -4171,7 +4171,7 @@
         <span style="display:flex;align-items:center;color:var(--muted);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="menu-item" id="menuConnectBtn" onclick="closeMenu();setTimeout(()=>{ window.location.href='connect.html'; },80);">
-        <span class="menu-item-icon connect-notif-dot" id="connectIconWrap" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.5"/><line x1="6.2" y1="7" x2="9.8" y2="4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="6.2" y1="9" x2="9.8" y2="11.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+        <span class="menu-item-icon connect-notif-dot" id="connectIconWrap" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5a3.536 3.536 0 0 0 5 0l2-2a3.536 3.536 0 0 0-5-5L7.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.5 6.5a3.536 3.536 0 0 0-5 0l-2 2a3.536 3.536 0 0 0 5 5l1-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
         <span class="menu-item-connect-wrap">
           <span class="menu-item-label" style="flex:none;">Connect</span>
           <span class="menu-item-connect-sub hidden" id="connectNotifSub"></span>
@@ -5839,48 +5839,40 @@
 
     // ── Connect badge: red dot + pending student info for teachers ──
     async function _refreshConnectNotif() {
-      if (!isT()) return; // only for teachers
+      if (!isT()) return;
       try {
-        const dot  = document.getElementById('connectIconWrap');
-        const sub  = document.getElementById('connectNotifSub');
+        const dot = document.getElementById('connectIconWrap');
+        const sub = document.getElementById('connectNotifSub');
         if (!dot || !sub) return;
-
-        // Use _db1 — connect.html always uses the primary project (fee-tracker-f32f8)
         const profileSnap = await getDoc(doc(_db1, 'profiles', cu.uid));
-
         if (!profileSnap.exists()) {
-          // No public profile yet
           dot.classList.add('has-notif');
           sub.textContent = 'Create your public profile';
           sub.classList.remove('hidden');
           return;
         }
-
-        // Has profile — check for pending join requests
         const reqSnap = await getDocs(
           query(collection(_db1, 'connections'),
                 where('teacherId', '==', cu.uid),
                 where('status', '==', 'pending'))
         );
-
         if (reqSnap.empty) {
           dot.classList.remove('has-notif');
           sub.classList.add('hidden');
           return;
         }
-
-        // Show first pending student's name + class
         dot.classList.add('has-notif');
         const first = reqSnap.docs[0].data();
         const extra = reqSnap.size > 1 ? ` +${reqSnap.size - 1} more` : '';
         const cls   = first.studentClass ? ` · ${first.studentClass}` : '';
         sub.textContent = `${first.studentName||'Student'}${cls}${extra} wants to join`;
         sub.classList.remove('hidden');
-      } catch(e) {
-        console.warn('[ConnectNotif]', e.message);
-      }
+      } catch(e) { console.warn('[ConnectNotif]', e.message); }
     }
     window._refreshConnectNotif = _refreshConnectNotif;
+
+    // SWIPE
+    let sx=0;
     window.startSwipe=(e,el)=>{
       sx=e.touches[0].clientX;
       el.style.transition='none';
@@ -6919,76 +6911,82 @@
       showOfflineBanner(false);
       loaded = true; cu = user;
 
-      // ── Route this user to the correct Firebase shard (stable per UID) ──
+      // ── Route this user to the correct Firebase shard ──
       db = _pickDb(user.uid);
       try { localStorage.setItem('ft_db_shard', String(_dbShard(user.uid))); } catch(e){}
+      try { localStorage.setItem('ft_uid', user.uid); } catch {}
 
       const _gb = document.getElementById('googleSignInBtn');
       if (_gb) _gb.disabled = false;
-      // Persist uid for offline boot detection
-      try { localStorage.setItem('ft_uid', user.uid); } catch {}
-      // Persist UID so cache keys are correct on offline reloads
-      try { localStorage.setItem('ft_uid', user.uid); } catch(e){}
-      // Update topbar avatar + menu
+
+      // ── Update avatar / menu immediately ──
       const av = document.getElementById('avatarEl');
       const ma = document.getElementById('menuAvatar');
       const initial = (user.displayName||'U')[0].toUpperCase();
       if (user.photoURL) {
         av.innerHTML=`<img src="${user.photoURL}">`;
         ma.innerHTML=`<img src="${user.photoURL}">`;
-      } else {
-        av.textContent=initial;
-        ma.textContent=initial;
-      }
+      } else { av.textContent=initial; ma.textContent=initial; }
       document.getElementById('menuName').textContent  = user.displayName||'User';
       document.getElementById('menuEmail').textContent = user.email||'';
       document.getElementById('loginScreen').classList.add('hidden');
-      // Sync desktop sidebar user card + show sidebar
       window._syncSidebarUser?.(user);
       sbSetPage?.('home');
-
-      // ── Populate splash skeleton topbar with real user avatar immediately ──
-      // This makes the splash→app transition seamless — no name/avatar pop
       const splashAv = document.getElementById('splashAvatar');
-      const splashTitle = document.getElementById('splashTitle');
       if (splashAv) {
-        splashAv.classList.remove('sk'); // stop shimmer, show real content
+        splashAv.classList.remove('sk');
         splashAv.style.background = 'linear-gradient(135deg, var(--accent), #5a4de6)';
-        if (user.photoURL) {
-          splashAv.innerHTML = `<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover;">`;
-        } else {
-          splashAv.textContent = initial;
-        }
+        if (user.photoURL) splashAv.innerHTML=`<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover;">`;
+        else splashAv.textContent = initial;
       }
 
-
-      const _alo=document.getElementById('authOverlay'); if(_alo) _alo.classList.add('show');
-
-      // Load IDB cache async — faster than LS, per-account keyed
+      // ── Step 1: Load IDB cache (fast, local storage) ──
       await loadFromCacheAsync();
 
-      await loadProfile();
-      if(_alo) _alo.classList.remove('show');
-      if (!profile.role) {
-        // First login — show onboarding
-        hideSplash();
-        const prefillName = user.displayName||'';
-        document.getElementById('obName').value = prefillName;
-        document.getElementById('onboardScreen').classList.remove('hidden');
-        sbSetPage?.('onboard');
-        window._sbRefreshLayout?.();
-      } else {
+      if (profile.role) {
+        // ── Cached profile found — show app INSTANTLY, sync Firestore in background ──
         hideSplash();
         document.getElementById('appScreen').classList.remove('hidden');
-        await loadAll(false); // renders from cache instantly, then re-renders only if Firestore data differs
-        _refreshConnectNotif().catch(()=>{});
-        // Init notifications after data is loaded (so checkLocalReminder has data)
-        setTimeout(() => {
-          initNotifications();
-          showNotifPrompt();
-          // Silently refresh token if permission already granted
-          refreshFCMTokenIfNeeded();
-        }, 1500);
+        render(); // immediate render from cache
+        appRendered = true;
+
+        // Background refresh — doesn't block UI
+        Promise.resolve().then(async () => {
+          await loadProfile();
+          updateRole();
+          await loadAll(false);
+          _refreshConnectNotif().catch(()=>{});
+          setTimeout(() => {
+            initNotifications();
+            showNotifPrompt();
+            refreshFCMTokenIfNeeded();
+          }, 1500);
+        }).catch(e => console.warn('[Boot] bg refresh:', e));
+
+      } else {
+        // ── No cached profile — first login or cleared cache, must wait ──
+        const _alo = document.getElementById('authOverlay');
+        if (_alo) _alo.classList.add('show');
+        await loadProfile();
+        if (_alo) _alo.classList.remove('show');
+
+        if (!profile.role) {
+          hideSplash();
+          document.getElementById('obName').value = user.displayName||'';
+          document.getElementById('onboardScreen').classList.remove('hidden');
+          sbSetPage?.('onboard');
+          window._sbRefreshLayout?.();
+        } else {
+          hideSplash();
+          document.getElementById('appScreen').classList.remove('hidden');
+          await loadAll(false);
+          _refreshConnectNotif().catch(()=>{});
+          setTimeout(() => {
+            initNotifications();
+            showNotifPrompt();
+            refreshFCMTokenIfNeeded();
+          }, 1500);
+        }
       }
     }
 
@@ -7194,6 +7192,8 @@
     // Expose helpers for inline onclick handlers
     window.isT = isT;
     window.closeMenu = closeMenu;
+    window.openAddBatchModal = openAddBatchModal;
+    window.openAddModal = openAddModal;
 
     // ═══════════════════════════════════════════════════
     //  DRAG-TO-DISMISS — works on every .modal-handle
