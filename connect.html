@@ -535,11 +535,29 @@
     }).join(''));
   }
 
+  // In-flight write lock for connect.html (mirrors index.html pattern)
+  const _cWriteLocks = {};
+  async function _cWriteLock(key) {
+    while (_cWriteLocks[key]) { await new Promise(r => setTimeout(r, 80)); }
+    _cWriteLocks[key] = true;
+    return () => { delete _cWriteLocks[key]; };
+  }
+  const _cCooldowns = {};
+  function _cCooldown(key, ms) {
+    const now = Date.now();
+    if (_cCooldowns[key] && (now - _cCooldowns[key]) < ms) return false;
+    _cCooldowns[key] = now;
+    return true;
+  }
+
   window.sendRequest = async function(teacherId, teacherName){
+    // Rate-limit: one request attempt per teacher per 5 seconds
+    if (!_cCooldown('req_'+teacherId, 5000)) { toast('Please wait…', ''); return; }
+    const release = await _cWriteLock('req_'+teacherId);
     const connId = cu.uid + '_' + teacherId;
     // Check if already exists
     const existing = myConnections.find(c=>c.teacherId===teacherId);
-    if(existing){ toast('Request already sent',''); return; }
+    if(existing){ release(); toast('Request already sent',''); return; }
     try {
       await setDoc(connDoc(connId), {
         studentId: cu.uid,
@@ -554,6 +572,7 @@
       toast(`Request sent to ${teacherName} ✓`, 'success');
       renderTeacherList();
     } catch(e){ toast('Failed: '+e.message, 'error'); }
+    finally { release(); }
   };
 
   function renderMyConnections(){
@@ -702,23 +721,28 @@
   }
 
   window.acceptRequest = async function(connId, studentId, studentName){
+    if (!_cCooldown('accept_'+connId, 3000)) return; // prevent double-tap
+    const release = await _cWriteLock('accept_'+connId);
     try {
       await updateDoc(connDoc(connId), { status:'active', acceptedAt: serverTimestamp() });
       const el = document.getElementById('req_'+connId);
       if(el){ el.style.opacity='0'; el.style.transform='translateX(20px)'; el.style.transition='all .3s'; setTimeout(()=>el.remove(),300); }
       toast(`${studentName} connected ✓`,'success');
-      // Update counts
       await loadConnectedStudents();
     } catch(e){ toast('Failed: '+e.message,'error'); }
+    finally { release(); }
   };
 
   window.declineRequest = async function(connId){
+    if (!_cCooldown('decline_'+connId, 3000)) return; // prevent double-tap
+    const release = await _cWriteLock('decline_'+connId);
     try {
       await deleteDoc(connDoc(connId));
       const el = document.getElementById('req_'+connId);
       if(el){ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }
       toast('Request declined','');
     } catch(e){ toast('Failed: '+e.message,'error'); }
+    finally { release(); }
   };
 
   async function loadConnectedStudents(){

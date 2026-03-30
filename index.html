@@ -4782,7 +4782,7 @@
     // before any Firestore collection refs are called.
     let db = _db1; // safe default until auth resolves
 
-    const auth = getAuth();
+    const auth = getAuth(_app1);  // ✅ FIXED: must pass named app; no '[DEFAULT]' app exists
     const provider = new GoogleAuthProvider();
 
     // ── Enable Firestore offline persistence for both shards ─────────────────
@@ -4802,7 +4802,7 @@
 
     // FCM — safe init (fails gracefully if SW not supported)
     let messaging = null;
-    try { messaging = getMessaging(_app); } catch(e) { console.warn('[FCM] Not supported:', e); }
+    try { messaging = getMessaging(_app1); } catch(e) { console.warn('[FCM] Not supported:', e); }  // ✅ FIXED: was _app (undefined)
 
     // Your VAPID key from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
     const VAPID_KEY = 'BDBRkVjHUVJ5cuWpmYtpiO-wHkLsTblOeAwrUfmcewOktc3rP28fUmTsAlNntrfAoiozhTxgQtw_W0SrdrH2HT4';
@@ -4811,6 +4811,44 @@
     // STATE
     let cu = null, teachers = {}, batches = {}, payments = [], searchQ = '', profile = {};
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // ════════════════════════════════════════════════════
+    // RATE-LIMITER & DEBOUNCE UTILITIES
+    // ════════════════════════════════════════════════════
+
+    // Simple debounce — returns a function that delays invoking fn until after wait ms
+    function _debounce(fn, wait) {
+      let timer;
+      return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), wait);
+      };
+    }
+
+    // Cooldown guard — returns true if the action is allowed, false if still cooling down
+    // usage: if (!_cooldown('pullRefresh', 30000)) return;
+    const _cooldowns = {};
+    function _cooldown(key, ms) {
+      const now = Date.now();
+      if (_cooldowns[key] && (now - _cooldowns[key]) < ms) return false;
+      _cooldowns[key] = now;
+      return true;
+    }
+
+    // In-flight write lock — prevents double-submission of async operations
+    // Usage: const release = await _writeLock('payTeacher_<id>'); try { ... } finally { release(); }
+    const _writeLocks = {};
+    async function _writeLock(key) {
+      while (_writeLocks[key]) {
+        await new Promise(r => setTimeout(r, 80));
+      }
+      _writeLocks[key] = true;
+      return () => { delete _writeLocks[key]; };
+    }
+
+    // ── Connect-notif TTL ─────────────────────────────
+    const _CONNECT_NOTIF_TTL = 60 * 1000; // 1 minute
+    let _connectNotifTs = 0;
 
     const _currencyMap = {
       'en-IN':'INR','en-US':'USD','en-GB':'GBP','en-AU':'AUD','en-CA':'CAD',
@@ -5665,7 +5703,7 @@
       );
       if(dataChanged || !appRendered){
         render();
-        setTimeout(()=>window._searchPlaceholderStart?.(), 400);
+        setTimeout(()=>window._searchPHStart?.(), 400);
         setTimeout(()=>_updateWidget(), 200);
       }
     }
@@ -5682,6 +5720,8 @@
     };
 
     window.payMonths=async function(id,type='full'){
+      const release = await _writeLock('pay_'+id);
+      try {
       const t=teachers[id], n=new Date(), po={day:n.getDate(),month:n.getMonth()+1,year:n.getFullYear()};
       if(type==='full'){
         const max=monthsDue(id); if(!max) return toast('All clear','success');
@@ -5739,6 +5779,7 @@
         setTimeout(updateTotalCard, 100);
       }
       render();
+      } finally { release(); }
     };
 
     window.deletePayment=async function(id){
@@ -5805,6 +5846,10 @@
       document.getElementById('addTeacherFields')?.classList.add('hidden');
     }
     async function confirmAdd(){
+      const btn = document.getElementById('confirmAddBtn');
+      if (btn.disabled) return; // prevent double-tap
+      btn.disabled = true; btn.textContent = 'Adding…';
+      try {
       if(isT()){
         const nm=document.getElementById('b-name').value.trim();
         const sb=document.getElementById('b-subject').value.trim();
@@ -5812,7 +5857,7 @@
         const ss=document.getElementById('b-session').value.trim();
         const fe=parseInt(document.getElementById('b-fee').value);
         const ti=document.getElementById('b-timing').value.trim();
-        if(!nm||!sb||!fe) return toast('Batch name, subject & fee required','error');
+        if(!nm||!sb||!fe){ toast('Batch name, subject & fee required','error'); return; }
         const bref=await addDoc(btCol(),{name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()});
         batches[bref.id]={name:nm,subject:sb,class:cl,session:ss,fee:fe,timing:ti,createdAt:Date.now()}; saveToCache();
         closeAddModal(); render(); toast(`${nm} added ✓`,'success');
@@ -5820,7 +5865,7 @@
         const nm=document.getElementById('f-name').value.trim();
         const sb=document.getElementById('f-subject').value.trim();
         const fe=parseInt(document.getElementById('f-fee').value);
-        if(!nm||!sb||!fe) return toast('Fill name, subject and fee','error');
+        if(!nm||!sb||!fe){ toast('Fill name, subject and fee','error'); return; }
         const dv=document.getElementById('f-lastpaid').value;
         const now2=new Date();
         const mo=dv?parseInt(dv.split('-')[1]):now2.getMonth()+1;
@@ -5830,6 +5875,8 @@
         closeAddModal(); toast(`${nm} added ✓`,'success');
       }
       render();
+      } catch(e) { toast('Error: '+e.message,'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Add'; }
     }
 
     window.toggleHistory=function(id){
@@ -5840,6 +5887,8 @@
     // ── Connect badge: red dot + pending student info for teachers ──
     async function _refreshConnectNotif() {
       if (!isT()) return;
+      // TTL gate — skip if checked within last 60 seconds
+      if (!_cooldown('connectNotif', _CONNECT_NOTIF_TTL)) return;
       try {
         const dot = document.getElementById('connectIconWrap');
         const sub = document.getElementById('connectNotifSub');
@@ -5936,25 +5985,32 @@
       const dy=e.changedTouches[0].clientY-py;
       pi.style.transform='translateY(-100%)';
       if(dy>72){
+        if (!_cooldown('pullRefresh', 30000)) {
+          toast('Just refreshed',''); return;
+        }
         pi.textContent='\u27f3 Refreshing\u2026';
         pi.style.transform='translateY(0)';
-        await loadAll(true);
+        await loadAll(true, true);
         toast('Refreshed \u2713','success');
         setTimeout(()=>{pi.style.transform='translateY(-100%)';},700);
       }
     },{passive:true});
 
-    window.onSearch=function(v){
-      searchQ=v;
-      const _ai=document.getElementById('appInner');
-      if(_ai){ if(v){ _ai.classList.add('search-active'); } else { _ai.classList.remove('search-active'); } }
-      document.body.classList.toggle('searching', v.length>0);
-      // Only re-render the cards list — preserve search input focus
-      const inp=document.querySelector('.search-input');
-      const cursorPos=inp?inp.selectionStart:null;
-      renderCards(); // partial render — doesn't touch search input DOM
-      const inp2=document.querySelector('.search-input');
-      if(inp2){ inp2.focus(); if(cursorPos!==null) try{inp2.setSelectionRange(cursorPos,cursorPos);}catch(e){} }
+    // Immediate state update, debounced DOM render (150ms) — stops re-rendering on every keystroke
+    const _renderCardsDebounced = _debounce(function(cursorPos) {
+      renderCards();
+      const inp2 = document.querySelector('.search-input');
+      if (inp2) { inp2.focus(); if (cursorPos !== null) try { inp2.setSelectionRange(cursorPos, cursorPos); } catch(e) {} }
+    }, 150);
+
+    window.onSearch = function(v) {
+      searchQ = v;
+      const _ai = document.getElementById('appInner');
+      if (_ai) { if (v) { _ai.classList.add('search-active'); } else { _ai.classList.remove('search-active'); } }
+      document.body.classList.toggle('searching', v.length > 0);
+      const inp = document.querySelector('.search-input');
+      const cursorPos = inp ? inp.selectionStart : null;
+      _renderCardsDebounced(cursorPos);
     };
 
     // MENU
@@ -6078,6 +6134,8 @@
       // Always show analytics button after any render
       const _db=document.getElementById('dashBtn');
       if(_db) _db.classList.remove('hidden');
+      // Bust placeholder cache so new teacher/batch names appear in suggestions
+      window._searchPlaceholderReset?.();
       // Run count-up on total amount after DOM settles
       setTimeout(_applyCurSymbol, 30);
       setTimeout(runTotalCountUp, 60);
@@ -6103,9 +6161,12 @@
         return;
       }
       let h='', dl=0;
+      // Pre-index payments by teacher so the loop doesn't scan the full array per card (O(n×m) → O(n))
+      const _paysByTeacher = {};
+      payments.forEach(p => { (_paysByTeacher[p.teacherId] = _paysByTeacher[p.teacherId] || []).push(p); });
       for(const id of sorted){
         const t=teachers[id], dm=monthsDue(id), da=calcDue(id), lps=lastPaidStr(id), ov2=dm>=3, cr=dm>=6, pb=partialBal(id);
-        const tpy=payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
+        const tpy=(_paysByTeacher[id]||[]).sort((a,b)=>b.timestamp-a.timestamp);
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
         h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s"
           onclick="if(selMode){event.stopPropagation();selTap('${id}');return;}openTeacherDetail('${id}')">
@@ -6183,9 +6244,12 @@
       if(!sorted.length){ h+=`<div class="no-results">No results for "<strong>${searchQ}</strong>"</div></div>`; root.innerHTML=h; return; }
 
       let dl=0;
+      // Pre-index payments by teacher — avoids O(n×m) filter per card
+      const _pbtRS = {};
+      payments.forEach(p => { (_pbtRS[p.teacherId] = _pbtRS[p.teacherId] || []).push(p); });
       for(const id of sorted){
         const t=teachers[id], dm=monthsDue(id), da=calcDue(id), lps=lastPaidStr(id), ov2=dm>=3, cr=dm>=6, pb=partialBal(id);
-        const tpy=payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
+        const tpy=(_pbtRS[id]||[]).sort((a,b)=>b.timestamp-a.timestamp);
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
         h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s"
           onclick="if(selMode){event.stopPropagation();selTap('${id}');return;}openTeacherDetail('${id}')">
@@ -6250,6 +6314,8 @@
       });};
 
     window.sPayMonths=async function(bid,sid,type){
+      const release = await _writeLock('spay_'+sid);
+      try {
       const fee=sFee(bid),st=batchStudents[sid];
       const n=new Date(),po={day:n.getDate(),month:n.getMonth()+1,year:n.getFullYear()};
       if(type==='full'){
@@ -6281,7 +6347,9 @@
         else { const _sr3=await addDoc(bpyCol(bid),_sp3); _sp3.id=_sr3.id; payments.push(_sp3); batchPayments.push(_sp3); saveToCache(); _invalidateBatchCache(bid); }
         document.getElementById('spay-advance-'+sid).value='';toast('Advance '+fmt(amt)+' ✓','success');
       }
-      await loadBatchDetail(bid);};
+      await loadBatchDetail(bid);
+      } finally { release(); }
+    };
 
     window.deleteStudentPayment=async function(bid,pid){
       if(!await confirm2('Delete Payment','Cannot be undone.','Delete',_CI.del))return;
@@ -7890,9 +7958,12 @@
       }).filter(id=>{ const q=searchQ.toLowerCase(); return !q||teachers[id].name.toLowerCase().includes(q)||teachers[id].subject.toLowerCase().includes(q); });
       if(!sorted.length){ h+=`<div class="no-results">No results for "<strong>${searchQ}</strong>"</div></div>`; root.innerHTML=h; return; }
       let dl=0;
+      // Pre-index payments by teacher — avoids O(n×m) filter per card
+      const _pbtPRS = {};
+      payments.forEach(p => { (_pbtPRS[p.teacherId] = _pbtPRS[p.teacherId] || []).push(p); });
       for(const id of sorted){
         const t=teachers[id],dm=monthsDue(id),da=calcDue(id),lps=lastPaidStr(id),ov2=dm>=3,cr=dm>=6,pb=partialBal(id);
-        const tpy=payments.filter(p=>p.teacherId===id).sort((a,b)=>b.timestamp-a.timestamp);
+        const tpy=(_pbtPRS[id]||[]).sort((a,b)=>b.timestamp-a.timestamp);
         const bdg=cr?`<span class="overdue-badge critical"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".7" fill="currentColor"/></svg>${dm}mo</span>`:ov2?`<span class="overdue-badge"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:3px"><path d="M7 2L0.5 13h13L7 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="7" y1="6.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="11.2" r=".65" fill="currentColor"/></svg>${dm}mo</span>`:'';
         const isSel=selItems.has(id);
         h+=`<div class="teacher-card ${cr?'card-critical':ov2?'card-overdue':''}" data-id="${id}" style="animation-delay:${dl}s"
@@ -8565,6 +8636,8 @@
 
     window.tdsPayMonths = async function(type){
       if(!_tdsId) return;
+      const release = await _writeLock('tdspay_'+_tdsId);
+      try {
       const id = _tdsId, t = teachers[id], dm = monthsDue(id);
       const n = new Date(), po = {day:n.getDate(), month:n.getMonth()+1, year:n.getFullYear()};
       if(type==='full'){
@@ -8608,6 +8681,7 @@
       renderCards();
       if(!document.getElementById('teacherDetailSheet').classList.contains('hidden'))
         window.openTeacherDetail(id);
+      } finally { release(); }
     };
 
     document.getElementById('tdsCloseBtn')?.addEventListener('click', closeTeacherDetail);
@@ -8818,14 +8892,19 @@
     // ══════════════════════════════════════════════════════════════════
     (function initSearchPlaceholder(){
       let _t = null, _idx = 0;
+      let _phCache = null; // cached placeholder list — rebuilt only when data changes
       function getPH(){
+        if (_phCache) return _phCache;
         const base = isT() ? ['Search batch or subject…'] : ['Search teacher or subject…'];
         const items = isT()
           ? Object.values(batches).flatMap(b=>[b.name,...(b.subject||'').split(',').map(s=>s.trim())]).filter(Boolean)
           : Object.values(teachers).flatMap(t=>[t.name,t.subject]).filter(Boolean);
         [...new Set(items)].slice(0,6).forEach(v=>base.push('Try "'+v+'"'));
+        _phCache = base;
         return base;
       }
+      // Expose cache-bust so render() can call it after data changes
+      window._searchPlaceholderReset = function(){ _phCache = null; _idx = 0; };
       function cycle(){
         const inp = document.querySelector('#appInner .search-input');
         if(!inp || document.activeElement===inp || (window.searchQ||'')) return;
@@ -9297,15 +9376,14 @@
                   }, 800);
                 }
                 break;
-              // SW says background sync triggered — re-fetch data
+              // SW says background sync triggered — re-fetch data (max once per 30s)
               case 'BG_SYNC_TRIGGER':
-                if (typeof loadAll === 'function') loadAll(true);
+                if (typeof loadAll === 'function' && _cooldown('swSync', 30000)) loadAll(true);
                 break;
-              // SW replays offline write queue — we just do a full sync since
-              // Firestore SDK handles actual write replay internally via its own queue
+              // SW replays offline write queue — re-sync (max once per 30s)
               case 'REPLAY_QUEUE':
                 console.log('[FeeTracker] SW replay queue received, syncing...');
-                if (typeof loadAll === 'function') loadAll(true);
+                if (typeof loadAll === 'function' && _cooldown('swReplay', 30000)) loadAll(true);
                 break;
               // Periodic reminder check — SW says check dues
               case 'PERIODIC_REMINDER_CHECK':
