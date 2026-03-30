@@ -1355,6 +1355,11 @@
     .menu-item:active      { background: rgba(255,255,255,.05); }
     .menu-item-icon        { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
     .menu-item-label       { flex: 1; }
+    .menu-item-connect-wrap { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .menu-item-connect-sub  { font-size: 11px; color: var(--accent2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .connect-notif-dot      { position: relative; display: flex; align-items: center; justify-content: center; }
+    .connect-notif-dot::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: #ff4d6d; border: 1.5px solid var(--surface); display: none; }
+    .connect-notif-dot.has-notif::after { display: block; }
     .menu-item-arrow       { color: var(--muted); font-size: 11px; }
     .menu-item.danger      { color: var(--red); background: rgba(255,77,109,.05); border: 1px solid rgba(255,77,109,.1); }
     .menu-item.danger:active { background: rgba(255,77,109,.12); }
@@ -4166,8 +4171,11 @@
         <span style="display:flex;align-items:center;color:var(--muted);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="menu-item" id="menuConnectBtn" onclick="closeMenu();setTimeout(()=>{ window.location.href='connect.html'; },80);">
-        <span class="menu-item-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.5"/><line x1="6.2" y1="7" x2="9.8" y2="4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="6.2" y1="9" x2="9.8" y2="11.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
-        <span class="menu-item-label">Connect</span>
+        <span class="menu-item-icon connect-notif-dot" id="connectIconWrap" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.5"/><line x1="6.2" y1="7" x2="9.8" y2="4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="6.2" y1="9" x2="9.8" y2="11.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+        <span class="menu-item-connect-wrap">
+          <span class="menu-item-label" style="flex:none;">Connect</span>
+          <span class="menu-item-connect-sub hidden" id="connectNotifSub"></span>
+        </span>
         <span style="display:flex;align-items:center;color:var(--muted);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="menu-item" id="menuHistoryBtn" onclick="closeMenu();openHistoryScreen()">
@@ -4691,6 +4699,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
     import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc,
+             query, where,
              enableIndexedDbPersistence }
       from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence }
@@ -4773,7 +4782,7 @@
     // before any Firestore collection refs are called.
     let db = _db1; // safe default until auth resolves
 
-    const auth = getAuth(_app1);
+    const auth = getAuth();
     const provider = new GoogleAuthProvider();
 
     // ── Enable Firestore offline persistence for both shards ─────────────────
@@ -4793,7 +4802,7 @@
 
     // FCM — safe init (fails gracefully if SW not supported)
     let messaging = null;
-    try { messaging = getMessaging(_app1); } catch(e) { console.warn('[FCM] Not supported:', e); }
+    try { messaging = getMessaging(_app); } catch(e) { console.warn('[FCM] Not supported:', e); }
 
     // Your VAPID key from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
     const VAPID_KEY = 'BDBRkVjHUVJ5cuWpmYtpiO-wHkLsTblOeAwrUfmcewOktc3rP28fUmTsAlNntrfAoiozhTxgQtw_W0SrdrH2HT4';
@@ -5828,8 +5837,50 @@
       document.getElementById('tog-'+id).classList.toggle('open');
     };
 
-    // SWIPE
-    let sx=0;
+    // ── Connect badge: red dot + pending student info for teachers ──
+    async function _refreshConnectNotif() {
+      if (!isT()) return; // only for teachers
+      try {
+        const dot  = document.getElementById('connectIconWrap');
+        const sub  = document.getElementById('connectNotifSub');
+        if (!dot || !sub) return;
+
+        // Use _db1 — connect.html always uses the primary project (fee-tracker-f32f8)
+        const profileSnap = await getDoc(doc(_db1, 'profiles', cu.uid));
+
+        if (!profileSnap.exists()) {
+          // No public profile yet
+          dot.classList.add('has-notif');
+          sub.textContent = 'Create your public profile';
+          sub.classList.remove('hidden');
+          return;
+        }
+
+        // Has profile — check for pending join requests
+        const reqSnap = await getDocs(
+          query(collection(_db1, 'connections'),
+                where('teacherId', '==', cu.uid),
+                where('status', '==', 'pending'))
+        );
+
+        if (reqSnap.empty) {
+          dot.classList.remove('has-notif');
+          sub.classList.add('hidden');
+          return;
+        }
+
+        // Show first pending student's name + class
+        dot.classList.add('has-notif');
+        const first = reqSnap.docs[0].data();
+        const extra = reqSnap.size > 1 ? ` +${reqSnap.size - 1} more` : '';
+        const cls   = first.studentClass ? ` · ${first.studentClass}` : '';
+        sub.textContent = `${first.studentName||'Student'}${cls}${extra} wants to join`;
+        sub.classList.remove('hidden');
+      } catch(e) {
+        console.warn('[ConnectNotif]', e.message);
+      }
+    }
+    window._refreshConnectNotif = _refreshConnectNotif;
     window.startSwipe=(e,el)=>{
       sx=e.touches[0].clientX;
       el.style.transition='none';
@@ -6930,6 +6981,7 @@
         hideSplash();
         document.getElementById('appScreen').classList.remove('hidden');
         await loadAll(false); // renders from cache instantly, then re-renders only if Firestore data differs
+        _refreshConnectNotif().catch(()=>{});
         // Init notifications after data is loaded (so checkLocalReminder has data)
         setTimeout(() => {
           initNotifications();
