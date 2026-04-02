@@ -4497,7 +4497,7 @@
         <div class="field-group">
           <label>Last Payment Date</label>
           <input class="field-input" id="f-lastpaid" type="date">
-          <div class="field-hint">Dues are calculated from this date. Leave blank if never paid.</div>
+          <div class="field-hint">Set to the last month you paid. Leave blank to start dues from last month.</div>
         </div>
       </div>
 
@@ -4738,7 +4738,7 @@
     })();
 
     // ── PROJECT 1 (primary — your existing project) ──────────────────────────
-    const cfg1 = { apiKey:"AIzaSyDlpLbd5g78eHv_elhiiLRlOdhPMvn9ijA", authDomain:"feetracker.pages.dev", projectId:"fee-tracker-f32f8", storageBucket:"fee-tracker-f32f8.firebasestorage.app", messagingSenderId:"1061066310105", appId:"1:1061066310105:web:4ca8c0feaa9d6614cd19c8" };
+    const cfg1 = { apiKey:"AIzaSyDlpLbd5g78eHv_elhiiLRlOdhPMvn9ijA", authDomain:"fee-tracker-f32f8.firebaseapp.com", projectId:"fee-tracker-f32f8", storageBucket:"fee-tracker-f32f8.firebasestorage.app", messagingSenderId:"1061066310105", appId:"1:1061066310105:web:4ca8c0feaa9d6614cd19c8" };
 
     // ── PROJECT 2 (secondary — fill in your second Firebase project config) ──
     // Create a second Firebase project at console.firebase.google.com,
@@ -5183,10 +5183,10 @@
     // DUE CALC
     function lastPaid(id){
       const t=teachers[id];
-      // Seed day from lastPaidDate field if available (YYYY-MM-DD)
+      const _now=new Date(),_prev=new Date(_now.getFullYear(),_now.getMonth()-1,1);
       let seedDay=1;
       if(t.lastPaidDate){ const pp=t.lastPaidDate.split('-'); if(pp[2]) seedDay=parseInt(pp[2])||1; }
-      let lp={month:t.baselineMonth,year:t.baselineYear,day:seedDay};
+      let lp={month:t.baselineMonth||(_prev.getMonth()+1),year:t.baselineYear||_prev.getFullYear(),day:seedDay};
       let rp=0;
       payments.filter(p=>p.teacherId===id).sort((a,b)=>a.timestamp-b.timestamp).forEach(p=>{
         if(p.type==='partial'){ rp+=p.amount; const c=Math.floor(rp/t.fee); if(c>0){lp=addM(lp,c); lp.day=p.paidOn?.day||lp.day; rp%=t.fee;} }
@@ -5372,28 +5372,80 @@
         await refreshFCMTokenIfNeeded();
 
         updateNotifMenuLabel();
-        checkDueReminder();
+        window._checkDueReminder();
       } catch(e) { console.warn('[Notif] Init failed:', e); }
     }
 
-    // Fire a due-reminder notification if conditions are met
-    function checkDueReminder(force = false) {
+    // Fire a due-reminder notification if conditions are met.
+    // Fires on days 1–5 of the month (baseline+1mo window), respects 25-day cooldown.
+    // Student role: checks teachers[]. Teacher role: reads IDB-cached batch data.
+    async function checkDueReminder(force = false) {
       if (Notification.permission !== 'granted') return;
 
-      const lastShown  = parseInt(localStorage.getItem('ft_last_reminder') || '0');
-      const daysSince  = (Date.now() - lastShown) / 86400000;
-      if (!force && daysSince < 25) return; // ~monthly cadence
+      const today = new Date();
+      const lastShown = parseInt(localStorage.getItem('ft_last_reminder') || '0');
+      const daysSince = (Date.now() - lastShown) / 86400000;
 
-      const dueTeachers = Object.keys(teachers).filter(id => monthsDue(id) > 0);
-      const body = buildReminderBody(dueTeachers);
-      if (!body) return; // nothing due — don't nag
+      if (!force) {
+        if (daysSince < 25) return;
+        // Only fire in the first 5 days of the month (the baseline+1 window)
+        if (today.getDate() > 5) return;
+      }
 
-      new Notification('Fee Reminder', {
+      const _fmt2 = window._fmt || (n => n.toLocaleString());
+      let body = null;
+
+      if (!isT()) {
+        // ── Student role: check teachers ──
+        const dueTeachers = Object.keys(teachers).filter(id => monthsDue(id) > 0);
+        body = buildReminderBody(dueTeachers);
+      } else {
+        // ── Teacher role: tally due students from IDB-cached batch details ──
+        const curM = today.getMonth()+1, curY = today.getFullYear();
+        let dueCount = 0, dueNames = [];
+        for (const bid of Object.keys(batches)) {
+          try {
+            const cached = await loadBatchDetailFromCache(bid);
+            if (!cached) continue;
+            const fee = batches[bid]?.fee || 0;
+            if (!fee) continue;
+            Object.keys(cached.students||{}).forEach(sid => {
+              const st = cached.students[sid];
+              const _np = new Date(today.getFullYear(), today.getMonth()-1, 1);
+              let lp = {month: st.baselineMonth||(_np.getMonth()+1), year: st.baselineYear||(_np.getFullYear()), day: 1};
+              let rp = 0;
+              (cached.payments||[]).filter(p=>p.studentId===sid).sort((a,b)=>a.timestamp-b.timestamp).forEach(p=>{
+                if(p.type==='partial'){rp+=p.amount;const c=Math.floor(rp/fee);if(c>0){lp=addM(lp,c);lp.day=p.paidOn?.day||lp.day;rp%=fee;}}
+                else if(p.monthsPaid){lp=addM(lp,p.monthsPaid);lp.day=p.paidOn?.day||1;rp=0;}
+              });
+              const mo = Math.max(mBetween(lp,{month:curM,year:curY}),0);
+              const dayAdj = (mo>0 && today.getDate()<(lp.day||1)) ? 1 : 0;
+              if (Math.max(mo-dayAdj,0) > 0) { dueCount++; if(dueNames.length < 2) dueNames.push(st.name); }
+            });
+          } catch(e){}
+        }
+        // Also count standalone students
+        (_standaloneStudents||[]).forEach(s => {
+          const fee = s.fee||0; if(!fee) return;
+          const _np2 = new Date(today.getFullYear(), today.getMonth()-1, 1);
+          const lp = {month: s.baselineMonth||(_np2.getMonth()+1), year: s.baselineYear||_np2.getFullYear()};
+          const mo = Math.max(mBetween(lp,{month:today.getMonth()+1,year:today.getFullYear()}),0);
+          if (mo > 0) { dueCount++; if(dueNames.length < 2) dueNames.push(s.name); }
+        });
+        if (dueCount === 0) return;
+        if (dueCount === 1) body = `${dueNames[0]} has fees due this month`;
+        else if (dueCount === 2) body = `${dueNames[0]} & ${dueNames[1]} have fees due`;
+        else body = `${dueCount} students have fees due this month`;
+      }
+
+      if (!body) return;
+
+      new Notification('Fee Reminder 💰', {
         body,
-        icon:      '/icon-192.png',
-        badge:     '/icon-192.png',
-        tag:       'due-reminder',  // replaces previous reminder so no stacking
-        renotify:  true,
+        icon:     '/icon-192.png',
+        badge:    '/icon-192.png',
+        tag:      'due-reminder',
+        renotify: true,
       });
       localStorage.setItem('ft_last_reminder', String(Date.now()));
     }
@@ -5784,17 +5836,23 @@
 
     window.deletePayment=async function(id){
       if(!await confirm2('Delete Payment','This cannot be undone.','Delete',_CI.del)) return;
-      await deleteDoc(pyDoc(id)); payments=payments.filter(p=>p.id!==id); saveToCache();
-      try { idbSet('_lastSyncTs', null); } catch(e){}
-      toast('Deleted',''); render();
+      try{
+        await deleteDoc(pyDoc(id));
+        payments=payments.filter(p=>p.id!==id); saveToCache();
+        try { idbSet('_lastSyncTs', null); } catch(e){}
+        toast('Deleted',''); render();
+      }catch(e){ toast('Error: '+e.message,'error'); }
     };
     window.deleteTeacher=async function(id){
-      const t=teachers[id];
+      const t=teachers[id]; if(!t) return;
       if(!await confirm2('Remove Teacher',`Remove <strong style="color:#f0f0f8">${t.name}</strong> and all history?`,'Remove',_CI.rem)) return;
-      await Promise.all(payments.filter(p=>p.teacherId===id).map(p=>deleteDoc(pyDoc(p.id))));
-      await deleteDoc(tcDoc(id)); payments=payments.filter(p=>p.teacherId!==id); delete teachers[id]; saveToCache();
-      try { idbSet('_lastSyncTs', null); } catch(e){}
-      toast(`${t.name} removed`,''); render();
+      try{
+        await Promise.all(payments.filter(p=>p.teacherId===id).map(p=>deleteDoc(pyDoc(p.id))));
+        await deleteDoc(tcDoc(id));
+        payments=payments.filter(p=>p.teacherId!==id); delete teachers[id]; saveToCache();
+        try { idbSet('_lastSyncTs', null); } catch(e){}
+        toast(`${t.name} removed`,''); render();
+      }catch(e){ toast('Error: '+e.message,'error'); }
     };
     window.deleteBatch=async function(id){
       const b=batches[id];
@@ -5868,8 +5926,9 @@
         if(!nm||!sb||!fe){ toast('Fill name, subject and fee','error'); return; }
         const dv=document.getElementById('f-lastpaid').value;
         const now2=new Date();
-        const mo=dv?parseInt(dv.split('-')[1]):now2.getMonth()+1;
-        const yr=dv?parseInt(dv.split('-')[0]):now2.getFullYear();
+        const _prev=new Date(now2.getFullYear(),now2.getMonth()-1,1);
+        const mo=dv?parseInt(dv.split('-')[1]):(_prev.getMonth()+1);
+        const yr=dv?parseInt(dv.split('-')[0]):_prev.getFullYear();
         const tref=await addDoc(tcCol(),{name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null});
         teachers[tref.id]={name:nm,subject:sb,fee:fe,baselineMonth:mo,baselineYear:yr,lastPaidDate:dv||null}; saveToCache();
         closeAddModal(); toast(`${nm} added ✓`,'success');
@@ -6287,9 +6346,10 @@
     const sFee=bid=>batches[bid]?.fee||0;
     function sLastPaid(bid,sid){
       const fee=sFee(bid),st=batchStudents[sid];
+      const _sn=new Date(),_sp=new Date(_sn.getFullYear(),_sn.getMonth()-1,1);
       let seedDay=1;
       if(st.lastPaidDate){const pp=st.lastPaidDate.split('-');if(pp[2])seedDay=parseInt(pp[2])||1;}
-      let lp={month:st.baselineMonth,year:st.baselineYear,day:seedDay},rp=0;
+      let lp={month:st.baselineMonth||(_sp.getMonth()+1),year:st.baselineYear||_sp.getFullYear(),day:seedDay},rp=0;
       batchPayments.filter(p=>p.studentId===sid).sort((a,b)=>a.timestamp-b.timestamp).forEach(p=>{
         if(p.type==='partial'){rp+=p.amount;const cc=Math.floor(rp/fee);if(cc>0){lp=addM(lp,cc);lp.day=p.paidOn?.day||lp.day;rp%=fee;}}
         else if(p.monthsPaid){lp=addM(lp,p.monthsPaid);lp.day=p.paidOn?.day||1;rp=0;}
@@ -6353,12 +6413,18 @@
 
     window.deleteStudentPayment=async function(bid,pid){
       if(!await confirm2('Delete Payment','Cannot be undone.','Delete',_CI.del))return;
-      await deleteDoc(bpyDoc(bid,pid)); _invalidateBatchCache(bid); toast('Deleted','');await loadBatchDetail(bid);};
+      try{
+        await deleteDoc(bpyDoc(bid,pid)); _invalidateBatchCache(bid); toast('Deleted',''); await loadBatchDetail(bid);
+      }catch(e){ toast('Error: '+e.message,'error'); }
+    };
     window.deleteStudent=async function(bid,sid){
-      const st=batchStudents[sid];
+      const st=batchStudents[sid]; if(!st) return;
       if(!await confirm2('Remove Student',`Remove <strong style="color:#f0f0f8">${st.name}</strong>?`,'Remove',_CI.del))return;
-      await Promise.all(batchPayments.filter(p=>p.studentId===sid).map(p=>deleteDoc(bpyDoc(bid,p.id))));
-      await deleteDoc(stuDoc(bid,sid)); _invalidateBatchCache(bid); toast(st.name+' removed','');await loadBatchDetail(bid);};
+      try{
+        await Promise.all(batchPayments.filter(p=>p.studentId===sid).map(p=>deleteDoc(bpyDoc(bid,p.id))));
+        await deleteDoc(stuDoc(bid,sid)); _invalidateBatchCache(bid); toast(st.name+' removed',''); await loadBatchDetail(bid);
+      }catch(e){ toast('Error: '+e.message,'error'); }
+    };
     window.toggleStudentHist=function(sid){
       document.getElementById('shist-'+sid)?.classList.toggle('open');
       document.getElementById('stog-'+sid)?.classList.toggle('open');};
@@ -6527,6 +6593,7 @@
     }
 
     window.openBatchDetail=async function(bid){
+      if(!batches[bid]) return toast('Batch not found','error');
       screenTo('batchDetailScreen','appScreen','right');
       document.getElementById('bdTitle').textContent=batches[bid].name;
       document.getElementById('bdSub').textContent=batches[bid].subject||'';
@@ -7047,7 +7114,7 @@
         } else {
           hideSplash();
           document.getElementById('appScreen').classList.remove('hidden');
-          await loadAll(false);
+          try { await loadAll(false); } catch(e){ console.warn('[Boot] loadAll failed:', e); }
           _refreshConnectNotif().catch(()=>{});
           setTimeout(() => {
             initNotifications();
@@ -7216,15 +7283,19 @@
     document.getElementById('menuBackdrop').addEventListener('click',closeMenu);
     document.getElementById('userMenu').addEventListener('click',e=>e.stopPropagation());
     window.doSignOut=async function(){
-      _reconnecting = false;
-      window._clearSWCache?.();
-      await signOut(auth);
+      try{
+        _reconnecting = false;
+        window._clearSWCache?.();
+        await signOut(auth);
+      }catch(e){ toast('Sign out failed: '+e.message,'error'); }
     };
     document.getElementById('signOutBtn').addEventListener('click', async () => {
       closeMenu();
-      _reconnecting = false;
-      window._clearSWCache?.();
-      await signOut(auth);
+      try{
+        _reconnecting = false;
+        window._clearSWCache?.();
+        await signOut(auth);
+      }catch(e){ toast('Sign out failed: '+e.message,'error'); }
     });
     document.getElementById('editProfileBtn').addEventListener('click',()=>openProfileModal());
     document.getElementById('addBtn').addEventListener('click',openAddModal);
@@ -7595,7 +7666,7 @@
     const _origCheckDue=checkDueReminder;
     window._checkDueReminder=function(force=false){
       if(localStorage.getItem('ft_reminders_off')==='1') return;
-      _origCheckDue(force);
+      _origCheckDue(force).catch(()=>{});
     };
 
     // SELECTION MODE
@@ -8195,8 +8266,10 @@
             else if(p.monthsPaid){lp=addM(lp,p.monthsPaid);rp=0;}
           });
           const mo=Math.max(mBetween(lp,{month:curM,year:curY}),0);
+          const _dayAdj=(mo>0&&now.getDate()<(lp.day||1))?1:0;
+          const moAdj=Math.max(mo-_dayAdj,0);
           let pb=0; s.payments.filter(p=>p.studentId===sid).sort((a,x)=>a.timestamp-x.timestamp).forEach(p=>{if(p.type==='partial'){pb+=p.amount;pb%=fee;}else if(p.monthsPaid)pb=0;});
-          const due=Math.max(mo*fee-pb,0); bDue+=due; if(due===0)bPaid++;
+          const due=Math.max(moAdj*fee-pb,0); bDue+=due; if(due===0)bPaid++;
         });
         grandDue+=bDue; grandStudents+=stuKeys.length; grandPaid+=bPaid; grandMonthly+=stuKeys.length*(b.fee||0);
         batchSummaries.push({bid,name:b.name,stuCount:stuKeys.length,paidCount:bPaid,dueCount:stuKeys.length-bPaid,due:bDue});
@@ -8209,7 +8282,7 @@
       const monthLabels=[],monthAmts=[];
       for(let i=5;i>=0;i--){const d=new Date(curY,curM-1-i,1);monthLabels.push(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]);monthAmts.push(allPays.filter(p=>p.paidOn&&p.paidOn.month===d.getMonth()+1&&p.paidOn.year===d.getFullYear()).reduce((s,p)=>s+(p.amount||0),0));}
       const overdueList=[];
-      batchSummaries.forEach(bs=>{const s=allStats[bs.bid],b=batches[bs.bid],fee=b.fee||0;Object.keys(s.students).forEach(sid=>{const st=s.students[sid];let lp={month:st.baselineMonth||curM,year:st.baselineYear||curY},rp=0;s.payments.filter(p=>p.studentId===sid).sort((a,x)=>a.timestamp-x.timestamp).forEach(p=>{if(p.type==='partial'){rp+=p.amount;const c=Math.floor(rp/fee);if(c>0){lp=addM(lp,c);rp%=fee;}}else if(p.monthsPaid){lp=addM(lp,p.monthsPaid);rp=0;}});const mo=Math.max(mBetween(lp,{month:curM,year:curY}),0);let pb=0;s.payments.filter(p=>p.studentId===sid).sort((a,x)=>a.timestamp-x.timestamp).forEach(p=>{if(p.type==='partial'){pb+=p.amount;pb%=fee;}else if(p.monthsPaid)pb=0;});const due=Math.max(mo*fee-pb,0);if(due>0)overdueList.push({name:st.name,batch:b.name,due,mo});});});
+      batchSummaries.forEach(bs=>{const s=allStats[bs.bid],b=batches[bs.bid],fee=b.fee||0;Object.keys(s.students).forEach(sid=>{const st=s.students[sid];let lp={month:st.baselineMonth||curM,year:st.baselineYear||curY},rp=0;s.payments.filter(p=>p.studentId===sid).sort((a,x)=>a.timestamp-x.timestamp).forEach(p=>{if(p.type==='partial'){rp+=p.amount;const c=Math.floor(rp/fee);if(c>0){lp=addM(lp,c);rp%=fee;}}else if(p.monthsPaid){lp=addM(lp,p.monthsPaid);rp=0;}});const mo=Math.max(mBetween(lp,{month:curM,year:curY}),0);const _oda=(mo>0&&now.getDate()<(lp.day||1))?1:0;const moAdj2=Math.max(mo-_oda,0);let pb=0;s.payments.filter(p=>p.studentId===sid).sort((a,x)=>a.timestamp-x.timestamp).forEach(p=>{if(p.type==='partial'){pb+=p.amount;pb%=fee;}else if(p.monthsPaid)pb=0;});const due=Math.max(moAdj2*fee-pb,0);if(due>0)overdueList.push({name:st.name,batch:b.name,due,mo:moAdj2});});});
       overdueList.sort((a,b)=>b.due-a.due);
       const dark=isDarkMode(),tc=dark?'rgba(255,255,255,.55)':'rgba(30,30,60,.6)',gc=dark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)';
       body.innerHTML=`
@@ -8336,6 +8409,7 @@
       try{
         const upd={name:nm,subject:sb,fee:fe,lastPaidDate:dv||null};
         if(dv){ const dp=dv.split('-'); upd.baselineMonth=parseInt(dp[1]); upd.baselineYear=parseInt(dp[0]); }
+        else { const _p=new Date(new Date().getFullYear(),new Date().getMonth()-1,1); upd.baselineMonth=_p.getMonth()+1; upd.baselineYear=_p.getFullYear(); }
         await updateDoc(tcDoc(_editTeacherId),upd);
         try { idbSet('_lastSyncTs', null); } catch(e){}
         teachers[_editTeacherId]={...teachers[_editTeacherId],...upd};
@@ -8405,7 +8479,8 @@
       screenFadeTo('teacherDashScreen','appScreen');
       document.getElementById('teacherDashBody').innerHTML=dashSkeleton();
       const btn=document.getElementById('teacherDashRefresh'); if(btn)btn.classList.add('spinning');
-      await renderTeacherDash();
+      try{ await renderTeacherDash(); }
+      catch(e){ const b=document.getElementById('teacherDashBody'); if(b) b.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red);font-size:13px;">Failed to load dashboard.<br><small style="color:var(--muted)">${e.message}</small></div>`; }
       if(btn)setTimeout(()=>btn.classList.remove('spinning'),600);
     };
     window.closeTeacherDash=function(){
@@ -9387,7 +9462,7 @@
                 break;
               // Periodic reminder check — SW says check dues
               case 'PERIODIC_REMINDER_CHECK':
-                if (typeof checkDueReminder === 'function') checkDueReminder();
+                if (typeof window._checkDueReminder === 'function') window._checkDueReminder();
                 break;
               // Notification tapped — navigate to relevant screen
               case 'NOTIFICATION_CLICK':
